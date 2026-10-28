@@ -61,6 +61,7 @@ connects, the setup access point turns off. Find the ESP32's assigned address
 in the router's client list and open that address to return to the web page.
 If the home Wi-Fi is lost later, the setup access point is enabled as a
 fallback. BLE scanning runs while the ESP32 is connected to Wi-Fi.
+<img width="604" height="585" alt="2026-10-28 17_21_15-RaptGetawayWifi setup" src="https://github.com/user-attachments/assets/90aea3bc-767a-4d3f-ba77-8b8a556dceee" />
 
 ## Configure Pills and Brewfather
 
@@ -82,6 +83,8 @@ Each configured Pill has a **Test send now** button. It sends that Pill's
 latest measurement immediately when the sample is no more than 20 minutes old.
 A test send restarts that Pill's 15-minute automatic upload interval.
 Brewfather may enforce its own rate limit.
+<img width="603" height="717" alt="2026-10-28 17_22_20-PillConfig" src="https://github.com/user-attachments/assets/a998cb97-e067-44ad-8711-2c73846b600b" />
+
 
 ## Data sent
 
