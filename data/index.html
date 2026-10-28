@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RaptGetaway</title>
+    <style>
+        :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+        body { max-width: 860px; margin: 0 auto; padding: 24px; background: #171a1f; color: #eef1f5; }
+        h1, h2 { margin-top: 0; }
+        header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+        header select { width: auto; min-width: 130px; }
+        section, .pill { margin: 18px 0; padding: 20px; border: 1px solid #3c424c; border-radius: 12px; background: #22262d; }
+        label { display: block; margin: 12px 0 5px; }
+        input, select, button { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #58616e; border-radius: 7px; background: #171a1f; color: inherit; }
+        button { width: auto; margin: 10px 8px 0 0; cursor: pointer; background: #1769aa; border: 0; }
+        button.secondary { background: #414955; }
+        button.danger { background: #9c3939; }
+        .status { line-height: 1.5; }
+        .muted, .status { color: #b7c0cc; }
+        .online { color: #73d69a; }
+        .offline { color: #e8ad71; }
+        .message { min-height: 1.5em; margin-top: 8px; }
+        .measurements { line-height: 1.7; }
+        @media (max-width: 600px) {
+            body { padding: 14px; }
+            header { align-items: flex-start; }
+            header select { min-width: 110px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>RaptGetaway</h1>
+        <select id="language" aria-label="Language">
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+        </select>
+    </header>
+    <p id="gatewayStatus" class="status" data-i18n="loadingStatus">Loading status...</p>
+
+    <section>
+        <h2 data-i18n="wifiHeading">Wi-Fi setup</h2>
+        <p class="muted"><span data-i18n="setupNetwork">Setup network:</span> <strong>RaptGateway-Setup</strong> · <span data-i18n="address">Address:</span> <strong>http://192.168.4.1</strong></p>
+        <button id="scanWifi" type="button" data-i18n="scanWifi">Scan for Wi-Fi networks</button>
+        <form id="wifiForm">
+            <label for="ssid" data-i18n="chooseWifi">Choose Wi-Fi network</label>
+            <select id="ssid" required>
+                <option value="" data-i18n="scanFirst">Scan for networks first</option>
+            </select>
+            <label for="password" data-i18n="wifiPassword">Wi-Fi password</label>
+            <input id="password" type="password" autocomplete="current-password">
+            <button type="submit" data-i18n="saveWifi">Save Wi-Fi</button>
+            <div id="wifiMessage" class="message" role="status"></div>
+        </form>
+    </section>
+
+    <section>
+        <h2 data-i18n="pillsHeading">RAPT Pills</h2>
+        <p class="muted" data-i18n="pillsIntro">Pills in range appear automatically once the ESP is connected to your Wi-Fi. Give each Pill a name and its complete Brewfather Custom Stream URL.</p>
+        <div id="pills"><p class="status" data-i18n="searchingPills">Searching for Pills...</p></div>
+    </section>
+
+    <script>
+        const translations = {
+            en: {
+                loadingStatus: "Loading status...", wifiHeading: "Wi-Fi setup",
+                setupNetwork: "Setup network:", address: "Address:",
+                scanWifi: "Scan for Wi-Fi networks", chooseWifi: "Choose Wi-Fi network",
+                scanFirst: "Scan for networks first", wifiPassword: "Wi-Fi password",
+                saveWifi: "Save Wi-Fi", pillsHeading: "RAPT Pills",
+                pillsIntro: "Pills in range appear automatically once the ESP is connected to your Wi-Fi. Give each Pill a name and its complete Brewfather Custom Stream URL.",
+                searchingPills: "Searching for Pills...", scanRunning: "Scanning...",
+                chooseNetwork: "Choose a Wi-Fi network", noNetworks: "No networks found",
+                scanFailed: "Scan failed", open: " · open",
+                wifiConnected: "Home Wi-Fi connected (setup AP off): {ssid} · IP: {ip} · {count} Pill(s) configured",
+                wifiDisconnected: "No Wi-Fi connection · setup page: {ip}",
+                setupApActive: "Setup AP active · {ssid} · IP: {ip}",
+                fallbackApActive: "Fallback setup AP active for {duration} · {ssid} · IP: {ip}",
+                statusError: "Status error: {error}", savingWifi: "Saving Wi-Fi...",
+                wifiSaved: "Saved. The setup network will turn off after connecting. You can then reach this page at the ESP's home-network IP address.",
+                error: "Error: {error}", noPills: "No Pill found yet. Bring a Pill within BLE range.",
+                noDecodedMeasurement: "Pill detected, waiting for a decodable measurement...",
+                waitingMeasurement: "Waiting for a measurement...",
+                lastNotSeen: "not recently seen", newPill: "New Pill",
+                nameInBrewfather: "Name in Brewfather",
+                streamUrl: "Brewfather Custom Stream URL", savePill: "Save Pill",
+                deleteConfig: "Delete configuration", saving: "Saving...",
+                pillSaved: "Pill configuration saved.",
+                pillSearchFailed: "Pill scan failed: {error}", language: "Language",
+                testSendHelp: "Uses the saved settings. Save changes first. Sends the latest measurement now and restarts the 15-minute upload interval; Brewfather may enforce its own rate limit.",
+                testSend: "Test send now", testingSend: "Sending test measurement...",
+                testSent: "Brewfather accepted the test measurement (HTTP {status}).",
+                wifiScanStartFailed: "Could not start Wi-Fi scan",
+                wifiScanFailed: "Wi-Fi scan failed (code {code})",
+                credentialsRequired: "SSID or password is missing",
+                credentialsLength: "SSID or password has an invalid length",
+                credentialsSaveFailed: "Could not save Wi-Fi credentials",
+                pillFieldsRequired: "Pill address, name, and Brewfather URL are required",
+                pillFieldsInvalid: "Enter a valid address, name, and complete Brewfather URL",
+                duplicatePillName: "This Brewfather device name is already used by another Pill",
+                pillLimit: "A maximum of 12 Pills can be configured",
+                pillSaveFailed: "Could not save Pill configuration",
+                pillNotFound: "Pill configuration not found",
+                endpointNotFound: "API endpoint not found",
+                wifiRequired: "Wi-Fi connection required",
+                sampleUnavailable: "No recent measurement is available",
+                httpsStartFailed: "Could not start the HTTPS connection",
+                brewfatherHttpError: "Brewfather returned HTTP {status}{detail}"
+            },
+            de: {
+                loadingStatus: "Status wird geladen...", wifiHeading: "WLAN einrichten",
+                setupNetwork: "Setup-WLAN:", address: "Adresse:",
+                scanWifi: "WLANs suchen", chooseWifi: "WLAN auswählen",
+                scanFirst: "Bitte zuerst WLANs suchen", wifiPassword: "WLAN-Passwort",
+                saveWifi: "WLAN speichern", pillsHeading: "RAPT Pills",
+                pillsIntro: "Pills in Reichweite erscheinen automatisch, sobald der ESP mit deinem WLAN verbunden ist. Gib jeder Pill einen Namen und ihre vollständige Brewfather-Custom-Stream-URL.",
+                searchingPills: "Suche nach Pills...", scanRunning: "Suche läuft...",
+                chooseNetwork: "WLAN auswählen", noNetworks: "Keine WLANs gefunden",
+                scanFailed: "Suche fehlgeschlagen", open: " · offen",
+                wifiConnected: "Heim-WLAN verbunden (Setup-AP aus): {ssid} · IP: {ip} · {count} Pill(s) konfiguriert",
+                wifiDisconnected: "Kein WLAN verbunden · Setup-Webseite: {ip}",
+                setupApActive: "Setup-AP aktiv · {ssid} · IP: {ip}",
+                fallbackApActive: "Fallback-Setup-AP seit {duration} aktiv · {ssid} · IP: {ip}",
+                statusError: "Statusfehler: {error}", savingWifi: "Speichere WLAN...",
+                wifiSaved: "Gespeichert. Nach der Verbindung wird das Setup-WLAN ausgeschaltet. Danach erreichst du die Seite über die IP-Adresse im Heimnetz.",
+                error: "Fehler: {error}", noPills: "Noch keine Pill gefunden. Bitte eine Pill in BLE-Reichweite bringen.",
+                noDecodedMeasurement: "Pill erkannt, warte auf einen dekodierbaren Messwert...",
+                waitingMeasurement: "Warte auf Messwert...",
+                lastNotSeen: "zuletzt nicht gesehen", newPill: "Neue Pill",
+                nameInBrewfather: "Name in Brewfather",
+                streamUrl: "Brewfather-Custom-Stream-URL", savePill: "Pill speichern",
+                deleteConfig: "Konfiguration löschen", saving: "Speichere...",
+                pillSaved: "Pill-Konfiguration gespeichert.",
+                pillSearchFailed: "Pillen-Suche fehlgeschlagen: {error}", language: "Sprache",
+                testSendHelp: "Verwendet die gespeicherte Konfiguration; Änderungen bitte zuerst speichern. Sendet den letzten Messwert sofort und startet das 15-Minuten-Intervall neu. Brewfather kann ein eigenes Sendelimit durchsetzen.",
+                testSend: "Test jetzt senden", testingSend: "Sende Testmesswert...",
+                testSent: "Brewfather hat den Testmesswert angenommen (HTTP {status}).",
+                wifiScanStartFailed: "WLAN-Suche konnte nicht gestartet werden",
+                wifiScanFailed: "WLAN-Suche fehlgeschlagen (Code {code})",
+                credentialsRequired: "SSID oder Passwort fehlt",
+                credentialsLength: "SSID oder Passwort hat eine ungültige Länge",
+                credentialsSaveFailed: "WLAN-Zugangsdaten konnten nicht gespeichert werden",
+                pillFieldsRequired: "Pillen-Adresse, Name und Brewfather-URL sind erforderlich",
+                pillFieldsInvalid: "Bitte eine gültige Adresse, einen Namen und die vollständige Brewfather-URL eingeben",
+                duplicatePillName: "Der Brewfather-Gerätename wird bereits für eine andere Pill verwendet",
+                pillLimit: "Maximal 12 Pills können konfiguriert werden",
+                pillSaveFailed: "Pill-Konfiguration konnte nicht gespeichert werden",
+                pillNotFound: "Pill-Konfiguration nicht gefunden",
+                endpointNotFound: "API-Endpunkt nicht gefunden",
+                wifiRequired: "WLAN-Verbindung erforderlich",
+                sampleUnavailable: "Kein aktueller Messwert verfügbar",
+                httpsStartFailed: "HTTPS-Verbindung konnte nicht gestartet werden",
+                brewfatherHttpError: "Brewfather antwortet mit HTTP {status}{detail}"
+            }
+        };
+        const interpolate = (template, values = {}) =>
+            template.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
+        const t = (key, values) => interpolate(translations[currentLanguage][key], values);
+        const backendErrors = {
+            "WLAN-Suche konnte nicht gestartet werden": "wifiScanStartFailed",
+            "SSID oder Passwort fehlt": "credentialsRequired",
+            "SSID oder Passwort hat eine ungültige Länge": "credentialsLength",
+            "WLAN-Zugangsdaten konnten nicht gespeichert werden": "credentialsSaveFailed",
+            "Pillen-Adresse, Name und Brewfather-URL sind erforderlich": "pillFieldsRequired",
+            "Bitte eine gültige Adresse, einen Namen und die vollständige Brewfather-URL eingeben": "pillFieldsInvalid",
+            "Der Brewfather-Gerätename wird bereits für eine andere Pill verwendet": "duplicatePillName",
+            "Maximal 12 Pills können konfiguriert werden": "pillLimit",
+            "Pill-Konfiguration konnte nicht gespeichert werden": "pillSaveFailed",
+            "Pill-Konfiguration nicht gefunden": "pillNotFound",
+            "WLAN-Verbindung erforderlich": "wifiRequired",
+            "Kein aktueller Messwert verfügbar": "sampleUnavailable",
+            "HTTPS-Verbindung konnte nicht gestartet werden": "httpsStartFailed",
+            "API-Endpunkt nicht gefunden": "endpointNotFound"
+        };
+        function localizeError(error) {
+            const message = String(error);
+            if (backendErrors[message]) return t(backendErrors[message]);
+            const scanError = message.match(/^WLAN-Suche fehlgeschlagen \(Code (-?\d+)\)$/);
+            if (scanError) return t("wifiScanFailed", { code: scanError[1] });
+            const brewfatherError = message.match(/^Brewfather HTTP-Fehler (-?\d+)(?:: (.*))?$/);
+            return brewfatherError
+                ? t("brewfatherHttpError", {
+                    status: brewfatherError[1],
+                    detail: brewfatherError[2] ? `: ${brewfatherError[2]}` : ""
+                })
+                : message;
+        }
+        const browserLanguage = (navigator.languages && navigator.languages[0]) ||
+            navigator.language || "";
+        const browserPrefersGerman = /^de(?:-|$)/i.test(browserLanguage);
+        let currentLanguage = localStorage.getItem("raptgetaway-language") ||
+            (browserPrefersGerman ? "de" : "en");
+        if (!translations[currentLanguage]) currentLanguage = browserPrefersGerman ? "de" : "en";
+
+        function setLanguage(language, remember = false) {
+            currentLanguage = language;
+            if (remember) localStorage.setItem("raptgetaway-language", language);
+            document.documentElement.lang = language;
+            document.getElementById("language").value = language;
+            document.getElementById("language").setAttribute("aria-label", t("language"));
+            document.querySelectorAll("[data-i18n]").forEach(element => {
+                element.textContent = t(element.dataset.i18n);
+            });
+            refreshStatus();
+            refreshPills();
+        }
+
+        document.getElementById("language").addEventListener("change", event => {
+            setLanguage(event.target.value, true);
+        });
+
+        function formatDuration(seconds) {
+            if (seconds < 60) return currentLanguage === "de" ? "weniger als 1 Min." : "less than 1 min";
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const remainingMinutes = minutes % 60;
+            if (hours) return currentLanguage === "de"
+                ? `${hours} Std. ${remainingMinutes} Min.` : `${hours} hr ${remainingMinutes} min`;
+            return currentLanguage === "de" ? `${minutes} Min.` : `${minutes} min`;
+        }
+
+        const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        })[character]);
+
+        async function request(url, options) {
+            const response = await fetch(url, options);
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+            return data;
+        }
+
+        async function refreshStatus() {
+            try {
+                const status = await request("/api/status");
+                let message;
+                if (status.wifiConnected) {
+                    message = t("wifiConnected", {
+                        ssid: escapeHtml(status.wifiSsid),
+                        ip: escapeHtml(status.ip),
+                        count: status.pillCount
+                    });
+                } else if (status.setupApActive && status.wifiConfigured) {
+                    message = t("fallbackApActive", {
+                        duration: formatDuration(status.setupApActiveForSeconds),
+                        ssid: escapeHtml(status.setupSsid),
+                        ip: escapeHtml(status.ip)
+                    });
+                } else if (status.setupApActive) {
+                    message = t("setupApActive", {
+                        ssid: escapeHtml(status.setupSsid),
+                        ip: escapeHtml(status.ip)
+                    });
+                } else {
+                    message = t("wifiDisconnected", { ip: escapeHtml(status.ip) });
+                }
+                document.getElementById("gatewayStatus").textContent = message;
+            } catch (error) {
+                document.getElementById("gatewayStatus").textContent =
+                    t("statusError", { error: localizeError(error.message) });
+            }
+        }
+
+        document.getElementById("scanWifi").addEventListener("click", async () => {
+            const button = document.getElementById("scanWifi");
+            const select = document.getElementById("ssid");
+            button.disabled = true;
+            select.innerHTML = `<option value="">${escapeHtml(t("scanRunning"))}</option>`;
+            try {
+                const networks = await request("/api/wifi/scan");
+                select.innerHTML = networks.length
+                    ? `<option value="">${escapeHtml(t("chooseNetwork"))}</option>` + networks.map(network =>
+                        `<option value="${escapeHtml(network.ssid)}">${escapeHtml(network.ssid)} (${network.rssi} dBm)${network.secure ? "" : escapeHtml(t("open"))}</option>`
+                    ).join("")
+                    : `<option value="">${escapeHtml(t("noNetworks"))}</option>`;
+            } catch (error) {
+                select.innerHTML = `<option value="">${escapeHtml(t("scanFailed"))}</option>`;
+                document.getElementById("wifiMessage").textContent = localizeError(error.message);
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        document.getElementById("wifiForm").addEventListener("submit", async event => {
+            event.preventDefault();
+            const message = document.getElementById("wifiMessage");
+            message.textContent = t("savingWifi");
+            try {
+                await request("/api/wifi", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        ssid: document.getElementById("ssid").value,
+                        password: document.getElementById("password").value
+                    })
+                });
+                message.textContent = t("wifiSaved");
+                document.getElementById("password").value = "";
+                refreshStatus();
+            } catch (error) {
+                message.textContent = t("error", { error: localizeError(error.message) });
+            }
+        });
+
+        async function refreshPills() {
+            if (document.activeElement?.closest("#pills form")) return;
+            const container = document.getElementById("pills");
+            try {
+                const pills = await request("/api/pills");
+                if (!pills.length) {
+                    container.innerHTML = `<p class="status">${escapeHtml(t("noPills"))}</p>`;
+                    return;
+                }
+
+                container.innerHTML = pills.map((pill, index) => {
+                    const measurement = pill.temperature === undefined
+                        ? (pill.online ? t("noDecodedMeasurement") : t("waitingMeasurement"))
+                        : `${Number(pill.temperature).toFixed(2)} °C · SG ${Number(pill.gravity).toFixed(4)} · ${currentLanguage === "de" ? "Batterie" : "Battery"} ${Number(pill.batteryPercent).toFixed(0)} % (${Number(pill.batteryVolts).toFixed(2)} V)`;
+                    return `<article class="pill">
+                        <h3>${escapeHtml(pill.name || t("newPill"))}</h3>
+                        <div class="muted">${escapeHtml(pill.address)} · <span class="${pill.online ? "online" : "offline"}">${pill.online ? "online" : escapeHtml(t("lastNotSeen"))}</span></div>
+                        <p class="measurements">${escapeHtml(measurement)}</p>
+                        <form data-address="${escapeHtml(pill.address)}">
+                            <label for="name-${index}">${escapeHtml(t("nameInBrewfather"))}</label>
+                            <input id="name-${index}" name="name" maxlength="47" required value="${escapeHtml(pill.name || "")}" placeholder="Red Pill">
+                            <label for="url-${index}">${escapeHtml(t("streamUrl"))}</label>
+                            <input id="url-${index}" name="url" type="url" required value="${escapeHtml(pill.url || "")}" placeholder="https://log.brewfather.net/stream?id=...">
+                            <button type="submit">${escapeHtml(t("savePill"))}</button>
+                            ${pill.configured ? `<button type="button" data-test>${escapeHtml(t("testSend"))}</button><p class="muted">${escapeHtml(t("testSendHelp"))}</p>` : ""}
+                            ${pill.configured ? `<button class="danger" type="button" data-delete>${escapeHtml(t("deleteConfig"))}</button>` : ""}
+                            <div class="message" role="status" data-message></div>
+                        </form>
+                    </article>`;
+                }).join("");
+
+                container.querySelectorAll("form").forEach(form => form.addEventListener("submit", async event => {
+                    event.preventDefault();
+                    const message = form.querySelector("[data-message]");
+                    message.textContent = t("saving");
+                    try {
+                        await request("/api/pills", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                address: form.dataset.address,
+                                name: form.elements.name.value,
+                                url: form.elements.url.value
+                            })
+                        });
+                        message.textContent = t("pillSaved");
+                        refreshStatus();
+                        setTimeout(refreshPills, 1000);
+                    } catch (error) {
+                        message.textContent = t("error", { error: localizeError(error.message) });
+                    }
+                }));
+
+                container.querySelectorAll("[data-test]").forEach(button => button.addEventListener("click", async () => {
+                    const form = button.closest("form");
+                    const message = form.querySelector("[data-message]");
+                    button.disabled = true;
+                    message.textContent = t("testingSend");
+                    try {
+                        const result = await request(
+                            `/api/pills/test?address=${encodeURIComponent(form.dataset.address)}`,
+                            { method: "POST" }
+                        );
+                        message.textContent = t("testSent", { status: result.httpStatus });
+                    } catch (error) {
+                        message.textContent = t("error", { error: localizeError(error.message) });
+                    } finally {
+                        button.disabled = false;
+                    }
+                }));
+
+                container.querySelectorAll("[data-delete]").forEach(button => button.addEventListener("click", async () => {
+                    const form = button.closest("form");
+                    const message = form.querySelector("[data-message]");
+                    try {
+                        await request(`/api/pills?address=${encodeURIComponent(form.dataset.address)}`, { method: "DELETE" });
+                        refreshPills();
+                        refreshStatus();
+                    } catch (error) {
+                        message.textContent = t("error", { error: localizeError(error.message) });
+                    }
+                }));
+            } catch (error) {
+                container.innerHTML = `<p class="message">${escapeHtml(t("pillSearchFailed", { error: localizeError(error.message) }))}</p>`;
+            }
+        }
+
+        setLanguage(currentLanguage);
+        setInterval(refreshStatus, 5000);
+        setInterval(refreshPills, 5000);
+    </script>
+</body>
+</html>

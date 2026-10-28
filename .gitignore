@@ -1,0 +1,7 @@
+.pio/
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+include/config_local.h
+__pycache__/
+.DS_Store
+Thumbs.db
