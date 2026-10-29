@@ -30,6 +30,7 @@ was developed with substantial coding assistance from GitHub Copilot.
 
 - ESP32-S3 development board supported by PlatformIO's
   `esp32-s3-devkitc-1` target.
+- The tested gateway hardware has 8 MB flash and an external 2.4 GHz antenna.
 - A RAPT Pill with Bluetooth telemetry enabled and within BLE range.
 - PlatformIO Core or the PlatformIO IDE extension for Visual Studio Code.
 - A 2.4 GHz Wi-Fi network and a Brewfather Custom Stream URL for each Pill.
@@ -156,6 +157,25 @@ last measurement were received. Wi-Fi and BLE RSSI values are colored green at
 -65 dBm or stronger, yellow from -75 to -66 dBm, and orange below -75 dBm.
 These are rough signal-quality bands, not a distance estimate; radio conditions
 can make readings fluctuate.
+
+## Antenna and stainless-steel tanks
+
+Stainless steel can strongly attenuate and reflect 2.4 GHz radio signals. Beer
+also weakens radio signals, so a Pill inside a stainless-steel tank may be
+difficult to receive, particularly when it is partly submerged. The project
+developer uses and recommends an external antenna for the gateway. When
+compatible with the board and correctly connected, placing it outside the tank
+with a clearer path to the Pill can improve reception.
+
+A physically larger antenna does not automatically have more gain; antenna
+design, orientation, placement, cable loss, and nearby metal all matter. A
+gateway antenna upgrade does not increase the Pill's transmit power or
+guarantee reception through a closed metal tank.
+
+Use an antenna specified for 2.4 GHz and for the board's antenna connector.
+Higher-gain antennas can also affect transmit EIRP, so stay within the radio
+regulations that apply to your location. See Espressif's
+[ESP32-S3 RF layout guidance](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32s3/pcb-layout-design.html#rf).
 
 RAPT reports battery percentage. The gateway estimates voltage using
 `3.3 + (percentage / 100 × 0.9)` and sends this estimate in Brewfather's
