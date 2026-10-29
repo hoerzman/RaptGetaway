@@ -8,8 +8,11 @@
         :root { color-scheme: dark; font-family: system-ui, sans-serif; }
         body { max-width: 860px; margin: 0 auto; padding: 24px; background: #171a1f; color: #eef1f5; }
         h1, h2 { margin-top: 0; }
-        header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+        header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+        .header-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+        .header-actions { display: flex; gap: 8px; }
         header select { width: auto; min-width: 130px; }
+        .header-actions button { margin: 0; }
         section, .pill { margin: 18px 0; padding: 20px; border: 1px solid #3c424c; border-radius: 12px; background: #22262d; }
         label { display: block; margin: 12px 0 5px; }
         input, select, button { box-sizing: border-box; width: 100%; padding: 10px; border: 1px solid #58616e; border-radius: 7px; background: #171a1f; color: inherit; }
@@ -20,8 +23,14 @@
         .muted, .status { color: #b7c0cc; }
         .online { color: #73d69a; }
         .offline { color: #e8ad71; }
+        .rssi-good { color: #73d69a; }
+        .rssi-medium { color: #e8d36e; }
+        .rssi-weak { color: #f0a05a; }
+        .pill-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 10px; }
+        .ble-signal { color: #eef1f5; }
         .message { min-height: 1.5em; margin-top: 8px; }
         .measurements { line-height: 1.7; }
+        .fingerprint { display: block; margin: 8px 0; overflow-wrap: anywhere; word-break: break-word; }
         @media (max-width: 600px) {
             body { padding: 14px; }
             header { align-items: flex-start; }
@@ -32,63 +41,110 @@
 <body>
     <header>
         <h1>RaptGetaway</h1>
-        <select id="language" aria-label="Language">
-            <option value="en">English</option>
-            <option value="de">Deutsch</option>
-        </select>
+        <div class="header-controls">
+            <select id="language" aria-label="Language">
+                <option value="en">English</option>
+                <option value="de">Deutsch</option>
+            </select>
+            <div class="header-actions">
+                <button id="settingsToggle" class="secondary" type="button"
+                    data-i18n="settings" aria-expanded="false" hidden></button>
+                <button id="logout" class="secondary" type="button" hidden></button>
+            </div>
+        </div>
     </header>
     <p id="gatewayStatus" class="status" data-i18n="loadingStatus">Loading status...</p>
 
-    <section>
-        <h2 data-i18n="wifiHeading">Wi-Fi setup</h2>
-        <p class="muted"><span data-i18n="setupNetwork">Setup network:</span> <strong>RaptGateway-Setup</strong> · <span data-i18n="address">Address:</span> <strong>http://192.168.4.1</strong></p>
-        <button id="scanWifi" type="button" data-i18n="scanWifi">Scan for Wi-Fi networks</button>
-        <form id="wifiForm">
-            <label for="ssid" data-i18n="chooseWifi">Choose Wi-Fi network</label>
-            <select id="ssid" required>
-                <option value="" data-i18n="scanFirst">Scan for networks first</option>
-            </select>
-            <label for="password" data-i18n="wifiPassword">Wi-Fi password</label>
-            <input id="password" type="password" autocomplete="current-password">
-            <button type="submit" data-i18n="saveWifi">Save Wi-Fi</button>
-            <div id="wifiMessage" class="message" role="status"></div>
-        </form>
+    <section id="setupNotice" class="muted" hidden></section>
+
+    <section id="authPanel" hidden>
+        <h2 id="authHeading"></h2>
+        <p id="authInstructions" class="muted"></p>
+        <div id="certificateInfo" class="muted"></div>
+        <form id="authForm"></form>
+        <div id="authMessage" class="message" role="status"></div>
     </section>
 
-    <section>
+    <div id="adminContent" hidden>
+    <div id="settingsPanel" hidden>
+        <section id="wifiSection">
+            <h2 data-i18n="wifiHeading">Wi-Fi setup</h2>
+            <p class="muted"><span data-i18n="setupNetwork">Setup network:</span> <strong>RaptGateway-Setup</strong> · <span data-i18n="address">Address:</span> <strong>http://192.168.4.1</strong></p>
+            <button id="scanWifi" type="button" data-i18n="scanWifi">Scan for Wi-Fi networks</button>
+            <form id="wifiForm">
+                <label for="ssid" data-i18n="chooseWifi">Choose Wi-Fi network</label>
+                <select id="ssid" required>
+                    <option value="" data-i18n="scanFirst">Scan for networks first</option>
+                </select>
+                <label for="password" data-i18n="wifiPassword">Wi-Fi password</label>
+                <input id="password" type="password" autocomplete="current-password">
+                <button type="submit" data-i18n="saveWifi">Save Wi-Fi</button>
+                <div id="wifiMessage" class="message" role="status"></div>
+            </form>
+        </section>
+        <section id="factoryResetSection">
+            <h2 data-i18n="factoryResetHeading">Factory reset</h2>
+            <p class="muted" data-i18n="factoryResetDescription">This deletes Wi-Fi settings, Pills, the administrator password, and the device certificate.</p>
+            <button id="factoryReset" class="danger" type="button" data-i18n="factoryResetButton">Reset gateway</button>
+            <div id="factoryResetMessage" class="message" role="status"></div>
+        </section>
+    </div>
+
+    <section id="pillsSection">
         <h2 data-i18n="pillsHeading">RAPT Pills</h2>
         <p class="muted" data-i18n="pillsIntro">Pills in range appear automatically once the ESP is connected to your Wi-Fi. Give each Pill a name and its complete Brewfather Custom Stream URL.</p>
         <div id="pills"><p class="status" data-i18n="searchingPills">Searching for Pills...</p></div>
     </section>
+    </div>
 
     <script>
         const translations = {
             en: {
-                loadingStatus: "Loading status...", wifiHeading: "Wi-Fi setup",
+                loadingStatus: "Loading status...", settings: "Settings",
+                wifiHeading: "Wi-Fi setup",
                 setupNetwork: "Setup network:", address: "Address:",
                 scanWifi: "Scan for Wi-Fi networks", chooseWifi: "Choose Wi-Fi network",
                 scanFirst: "Scan for networks first", wifiPassword: "Wi-Fi password",
                 saveWifi: "Save Wi-Fi", pillsHeading: "RAPT Pills",
-                pillsIntro: "Pills in range appear automatically once the ESP is connected to your Wi-Fi. Give each Pill a name and its complete Brewfather Custom Stream URL.",
+                pillsIntro: "Pills in range appear automatically once the ESP is connected to your Wi-Fi. Configure each Pill's Brewfather name, Custom Stream URL, and upload interval.",
                 searchingPills: "Searching for Pills...", scanRunning: "Scanning...",
                 chooseNetwork: "Choose a Wi-Fi network", noNetworks: "No networks found",
                 scanFailed: "Scan failed", open: " · open",
-                wifiConnected: "Home Wi-Fi connected (setup AP off): {ssid} · IP: {ip} · {count} Pill(s) configured",
+                wifiConnected: "Home Wi-Fi connected (setup AP off): {ssid} · IP: {ip} · RSSI: {rssi} dBm · {count} Pill(s) configured",
+                bleSignal: "BLE signal:",
+                online: "online",
                 wifiDisconnected: "No Wi-Fi connection · setup page: {ip}",
                 setupApActive: "Setup AP active · {ssid} · IP: {ip}",
                 fallbackApActive: "Fallback setup AP active for {duration} · {ssid} · IP: {ip}",
                 statusError: "Status error: {error}", savingWifi: "Saving Wi-Fi...",
-                wifiSaved: "Saved. The setup network will turn off after connecting. You can then reach this page at the ESP's home-network IP address.",
+                wifiSaved: "Saved. After the ESP connects and the administrator password is set, the setup Wi-Fi turns off. Reopen the page at the HTTPS hostname printed in the serial console and verify its certificate fingerprint.",
                 error: "Error: {error}", noPills: "No Pill found yet. Bring a Pill within BLE range.",
                 noDecodedMeasurement: "Pill detected, waiting for a decodable measurement...",
                 waitingMeasurement: "Waiting for a measurement...",
-                lastNotSeen: "not recently seen", newPill: "New Pill",
+                lastNotSeen: "not recently seen",
+                lastSeenAgo: "last seen {duration} ago",
+                lastMeasurementAgo: "last measurement {duration} ago",
+                noMeasurementsYet: "no measurement received yet",
+                newPill: "New Pill",
                 nameInBrewfather: "Name in Brewfather",
-                streamUrl: "Brewfather Custom Stream URL", savePill: "Save Pill",
+                streamUrl: "Brewfather Custom Stream URL",
+                uploadInterval: "Automatic Brewfather upload interval",
+                interval15m: "15 minutes",
+                interval30m: "30 minutes",
+                interval1h: "1 hour",
+                interval2h: "2 hours",
+                interval4h: "4 hours",
+                streamUrlHelp: "A URL is saved. Enter a new URL only to replace it; leave blank to keep the saved URL.",
+                streamUrlRequired: "Enter the Brewfather URL for this Pill.",
+                noSendResult: "No send result recorded since this device started.",
+                sendAccepted: "Last send accepted by Brewfather (HTTP {status}).",
+                sendFailed: "Last send was not accepted (HTTP result {status}).",
+                sendTime: "at {time}",
+                savePill: "Save Pill",
                 deleteConfig: "Delete configuration", saving: "Saving...",
                 pillSaved: "Pill configuration saved.",
                 pillSearchFailed: "Pill scan failed: {error}", language: "Language",
-                testSendHelp: "Uses the saved settings. Save changes first. Sends the latest measurement now and restarts the 15-minute upload interval; Brewfather may enforce its own rate limit.",
+                testSendHelp: "Uses the saved settings. Save changes first. Sends the latest measurement now and restarts this Pill's automatic upload interval; Brewfather may enforce its own rate limit.",
                 testSend: "Test send now", testingSend: "Sending test measurement...",
                 testSent: "Brewfather accepted the test measurement (HTTP {status}).",
                 wifiScanStartFailed: "Could not start Wi-Fi scan",
@@ -96,8 +152,10 @@
                 credentialsRequired: "SSID or password is missing",
                 credentialsLength: "SSID or password has an invalid length",
                 credentialsSaveFailed: "Could not save Wi-Fi credentials",
-                pillFieldsRequired: "Pill address, name, and Brewfather URL are required",
-                pillFieldsInvalid: "Enter a valid address, name, and complete Brewfather URL",
+                pillFieldsRequired: "Pill address and name are required",
+                pillFieldsInvalid: "Enter a valid address, name, and Brewfather URL for a new Pill",
+                brewfatherHttpUrl: "This Brewfather URL starts with http://. Change the beginning to https:// before saving. Brewfather may copy the link with the wrong prefix.",
+                brewfatherUrlInvalid: "Invalid Brewfather URL. Paste the complete Custom Stream URL beginning with https://log.brewfather.net/stream?id=.",
                 duplicatePillName: "This Brewfather device name is already used by another Pill",
                 pillLimit: "A maximum of 12 Pills can be configured",
                 pillSaveFailed: "Could not save Pill configuration",
@@ -106,34 +164,86 @@
                 wifiRequired: "Wi-Fi connection required",
                 sampleUnavailable: "No recent measurement is available",
                 httpsStartFailed: "Could not start the HTTPS connection",
-                brewfatherHttpError: "Brewfather returned HTTP {status}{detail}"
+                brewfatherHttpError: "Brewfather returned HTTP {status}{detail}",
+                authSetupHeading: "Set an administrator password",
+                authLoginHeading: "Administrator sign-in",
+                authSetupInstructions: "Create a password of 12 to 64 characters. It protects gateway administration. Setup is only available to a client connected to the device's setup Wi-Fi.",
+                authLoginInstructions: "Sign in to view and change gateway configuration.",
+                authSessionReplaced: "This session is no longer active. It may have expired or been replaced by a sign-in from another browser or device. Sign in again to continue.",
+                authPassword: "Administrator password",
+                authPasswordLength: "Use a password of 12 to 64 characters.",
+                authPasswordIncorrect: "The administrator password is incorrect.",
+                authLoginLocked: "Too many failed sign-in attempts. Wait five minutes and try again.",
+                authPasswordSaveFailed: "The administrator password could not be saved.",
+                authConfirmPassword: "Confirm administrator password",
+                authSetPassword: "Set password",
+                authSignIn: "Sign in",
+                authCheckingPassword: "Checking password...",
+                authPasswordMismatch: "The passwords do not match.",
+                authSetupFailed: "Could not save the administrator password: {error}",
+                authLoginFailed: "Sign-in failed: {error}",
+                authFingerprint: "Before accepting the HTTPS certificate warning, compare this fingerprint with the one printed in the device serial console:",
+                authCopyFingerprint: "Copy fingerprint",
+                authFingerprintCopied: "Fingerprint copied.",
+                authFingerprintCopyFailed: "Could not copy the fingerprint. Select and copy the text instead.",
+                authSetupComplete: "Password saved. Reconnect your phone or computer to your home Wi-Fi, then open https://{hostname}/. The setup network will turn off shortly.",
+                logout: "Sign out",
+                httpsOnlySetup: "Connect to the device's setup Wi-Fi to complete first-time password setup.",
+                setupNotice: "Setup Wi-Fi connected. Sign in or create the administrator password, then choose your home Wi-Fi. If the setup page did not open automatically, visit http://192.168.4.1.",
+                factoryResetHeading: "Factory reset",
+                factoryResetDescription: "This deletes Wi-Fi settings, Pills, the administrator password, and the device certificate.",
+                factoryResetButton: "Reset gateway",
+                factoryResetConfirm: "Reset this gateway? Wi-Fi settings, Pill configurations, the administrator password, and the device certificate will be deleted.",
+                factoryResetting: "Settings cleared. The gateway is restarting...",
+                factoryResetFailed: "Could not reset the gateway: {error}",
+                factoryResetNvsFailed: "Saved settings could not be cleared."
             },
             de: {
-                loadingStatus: "Status wird geladen...", wifiHeading: "WLAN einrichten",
+                loadingStatus: "Status wird geladen...", settings: "Einstellungen",
+                wifiHeading: "WLAN einrichten",
                 setupNetwork: "Setup-WLAN:", address: "Adresse:",
                 scanWifi: "WLANs suchen", chooseWifi: "WLAN auswählen",
                 scanFirst: "Bitte zuerst WLANs suchen", wifiPassword: "WLAN-Passwort",
                 saveWifi: "WLAN speichern", pillsHeading: "RAPT Pills",
-                pillsIntro: "Pills in Reichweite erscheinen automatisch, sobald der ESP mit deinem WLAN verbunden ist. Gib jeder Pill einen Namen und ihre vollständige Brewfather-Custom-Stream-URL.",
+                pillsIntro: "Pills in Reichweite erscheinen automatisch, sobald der ESP mit deinem WLAN verbunden ist. Konfiguriere für jede Pill den Brewfather-Namen, die Custom-Stream-URL und das Sendeintervall.",
                 searchingPills: "Suche nach Pills...", scanRunning: "Suche läuft...",
                 chooseNetwork: "WLAN auswählen", noNetworks: "Keine WLANs gefunden",
                 scanFailed: "Suche fehlgeschlagen", open: " · offen",
-                wifiConnected: "Heim-WLAN verbunden (Setup-AP aus): {ssid} · IP: {ip} · {count} Pill(s) konfiguriert",
+                wifiConnected: "Heim-WLAN verbunden (Setup-AP aus): {ssid} · IP: {ip} · RSSI: {rssi} dBm · {count} Pill(s) konfiguriert",
+                bleSignal: "BLE-Signal:",
+                online: "online",
                 wifiDisconnected: "Kein WLAN verbunden · Setup-Webseite: {ip}",
                 setupApActive: "Setup-AP aktiv · {ssid} · IP: {ip}",
                 fallbackApActive: "Fallback-Setup-AP seit {duration} aktiv · {ssid} · IP: {ip}",
                 statusError: "Statusfehler: {error}", savingWifi: "Speichere WLAN...",
-                wifiSaved: "Gespeichert. Nach der Verbindung wird das Setup-WLAN ausgeschaltet. Danach erreichst du die Seite über die IP-Adresse im Heimnetz.",
+                wifiSaved: "Gespeichert. Sobald der ESP verbunden und das Administratorpasswort festgelegt ist, wird das Setup-WLAN ausgeschaltet. Öffne die Seite danach über den HTTPS-Hostnamen aus der seriellen Konsole und überprüfe den Zertifikat-Fingerabdruck.",
                 error: "Fehler: {error}", noPills: "Noch keine Pill gefunden. Bitte eine Pill in BLE-Reichweite bringen.",
                 noDecodedMeasurement: "Pill erkannt, warte auf einen dekodierbaren Messwert...",
                 waitingMeasurement: "Warte auf Messwert...",
-                lastNotSeen: "zuletzt nicht gesehen", newPill: "Neue Pill",
+                lastNotSeen: "zuletzt nicht gesehen",
+                lastSeenAgo: "zuletzt empfangen vor {duration}",
+                lastMeasurementAgo: "letzter Messwert vor {duration}",
+                noMeasurementsYet: "noch kein Messwert empfangen",
+                newPill: "Neue Pill",
                 nameInBrewfather: "Name in Brewfather",
-                streamUrl: "Brewfather-Custom-Stream-URL", savePill: "Pill speichern",
+                streamUrl: "Brewfather-Custom-Stream-URL",
+                uploadInterval: "Automatisches Brewfather-Sendeintervall",
+                interval15m: "15 Minuten",
+                interval30m: "30 Minuten",
+                interval1h: "1 Stunde",
+                interval2h: "2 Stunden",
+                interval4h: "4 Stunden",
+                streamUrlHelp: "Eine URL ist gespeichert. Nur zum Ersetzen eine neue URL eingeben; leer lassen, um die gespeicherte URL beizubehalten.",
+                streamUrlRequired: "Brewfather-URL für diese Pill eingeben.",
+                noSendResult: "Seit dem Start dieses Geräts wurde noch kein Sendeergebnis erfasst.",
+                sendAccepted: "Letzte Sendung von Brewfather angenommen (HTTP {status}).",
+                sendFailed: "Letzte Sendung wurde nicht angenommen (HTTP-Ergebnis {status}).",
+                sendTime: "um {time}",
+                savePill: "Pill speichern",
                 deleteConfig: "Konfiguration löschen", saving: "Speichere...",
                 pillSaved: "Pill-Konfiguration gespeichert.",
                 pillSearchFailed: "Pillen-Suche fehlgeschlagen: {error}", language: "Sprache",
-                testSendHelp: "Verwendet die gespeicherte Konfiguration; Änderungen bitte zuerst speichern. Sendet den letzten Messwert sofort und startet das 15-Minuten-Intervall neu. Brewfather kann ein eigenes Sendelimit durchsetzen.",
+                testSendHelp: "Verwendet die gespeicherte Konfiguration; Änderungen bitte zuerst speichern. Sendet den letzten Messwert sofort und startet das automatische Sendeintervall dieser Pill neu. Brewfather kann ein eigenes Sendelimit durchsetzen.",
                 testSend: "Test jetzt senden", testingSend: "Sende Testmesswert...",
                 testSent: "Brewfather hat den Testmesswert angenommen (HTTP {status}).",
                 wifiScanStartFailed: "WLAN-Suche konnte nicht gestartet werden",
@@ -141,8 +251,10 @@
                 credentialsRequired: "SSID oder Passwort fehlt",
                 credentialsLength: "SSID oder Passwort hat eine ungültige Länge",
                 credentialsSaveFailed: "WLAN-Zugangsdaten konnten nicht gespeichert werden",
-                pillFieldsRequired: "Pillen-Adresse, Name und Brewfather-URL sind erforderlich",
-                pillFieldsInvalid: "Bitte eine gültige Adresse, einen Namen und die vollständige Brewfather-URL eingeben",
+                pillFieldsRequired: "Pillen-Adresse und Name sind erforderlich",
+                pillFieldsInvalid: "Bitte eine gültige Adresse, einen Namen und für eine neue Pill die Brewfather-URL eingeben",
+                brewfatherHttpUrl: "Dieser Brewfather-Link beginnt mit http://. Ändere den Anfang zu https://, bevor du speicherst. Brewfather kopiert den Link möglicherweise mit dem falschen Präfix.",
+                brewfatherUrlInvalid: "Ungültige Brewfather-URL. Bitte die vollständige Custom-Stream-URL eingeben, die mit https://log.brewfather.net/stream?id= beginnt.",
                 duplicatePillName: "Der Brewfather-Gerätename wird bereits für eine andere Pill verwendet",
                 pillLimit: "Maximal 12 Pills können konfiguriert werden",
                 pillSaveFailed: "Pill-Konfiguration konnte nicht gespeichert werden",
@@ -151,7 +263,39 @@
                 wifiRequired: "WLAN-Verbindung erforderlich",
                 sampleUnavailable: "Kein aktueller Messwert verfügbar",
                 httpsStartFailed: "HTTPS-Verbindung konnte nicht gestartet werden",
-                brewfatherHttpError: "Brewfather antwortet mit HTTP {status}{detail}"
+                brewfatherHttpError: "Brewfather antwortet mit HTTP {status}{detail}",
+                authSetupHeading: "Administratorpasswort festlegen",
+                authLoginHeading: "Administrator-Anmeldung",
+                authSetupInstructions: "Legen Sie ein Passwort mit 12 bis 64 Zeichen fest. Es schützt die Gateway-Verwaltung. Die Einrichtung ist nur über das Setup-WLAN des Geräts möglich.",
+                authLoginInstructions: "Melden Sie sich an, um die Gateway-Konfiguration anzuzeigen und zu ändern.",
+                authSessionReplaced: "Diese Sitzung ist nicht mehr aktiv. Sie kann abgelaufen oder durch eine Anmeldung in einem anderen Browser oder Gerät ersetzt worden sein. Melden Sie sich erneut an, um fortzufahren.",
+                authPassword: "Administratorpasswort",
+                authPasswordLength: "Verwenden Sie ein Passwort mit 12 bis 64 Zeichen.",
+                authPasswordIncorrect: "Das Administratorpasswort ist falsch.",
+                authLoginLocked: "Zu viele fehlgeschlagene Anmeldeversuche. Warten Sie fünf Minuten und versuchen Sie es erneut.",
+                authPasswordSaveFailed: "Das Administratorpasswort konnte nicht gespeichert werden.",
+                authConfirmPassword: "Administratorpasswort bestätigen",
+                authSetPassword: "Passwort festlegen",
+                authSignIn: "Anmelden",
+                authCheckingPassword: "Passwort wird geprüft...",
+                authPasswordMismatch: "Die Passwörter stimmen nicht überein.",
+                authSetupFailed: "Administratorpasswort konnte nicht gespeichert werden: {error}",
+                authLoginFailed: "Anmeldung fehlgeschlagen: {error}",
+                authFingerprint: "Vergleichen Sie vor dem Akzeptieren der HTTPS-Zertifikatswarnung diesen Fingerabdruck mit dem Ausdruck in der seriellen Gerätekonsole:",
+                authCopyFingerprint: "Fingerabdruck kopieren",
+                authFingerprintCopied: "Fingerabdruck kopiert.",
+                authFingerprintCopyFailed: "Fingerabdruck konnte nicht kopiert werden. Bitte den Text markieren und kopieren.",
+                authSetupComplete: "Passwort gespeichert. Verbinden Sie Ihr Handy oder Ihren Computer wieder mit dem Heim-WLAN und öffnen Sie https://{hostname}/. Das Setup-WLAN wird in Kürze ausgeschaltet.",
+                logout: "Abmelden",
+                httpsOnlySetup: "Verbinden Sie sich mit dem Setup-WLAN des Geräts, um das erste Passwort festzulegen.",
+                setupNotice: "Mit dem Setup-WLAN verbunden. Melde dich an oder lege das Administratorpasswort fest und wähle anschließend dein Heim-WLAN. Falls sich die Einrichtungsseite nicht automatisch geöffnet hat, rufe http://192.168.4.1 auf.",
+                factoryResetHeading: "Auf Werkseinstellungen zurücksetzen",
+                factoryResetDescription: "Dabei werden WLAN-Einstellungen, Pill-Konfigurationen, das Administratorpasswort und das Gerätezertifikat gelöscht.",
+                factoryResetButton: "Gateway zurücksetzen",
+                factoryResetConfirm: "Gateway wirklich zurücksetzen? WLAN-Einstellungen, Pill-Konfigurationen, Administratorpasswort und Gerätezertifikat werden gelöscht.",
+                factoryResetting: "Einstellungen gelöscht. Das Gateway startet neu...",
+                factoryResetFailed: "Gateway konnte nicht zurückgesetzt werden: {error}",
+                factoryResetNvsFailed: "Gespeicherte Einstellungen konnten nicht gelöscht werden."
             }
         };
         const interpolate = (template, values = {}) =>
@@ -162,8 +306,10 @@
             "SSID oder Passwort fehlt": "credentialsRequired",
             "SSID oder Passwort hat eine ungültige Länge": "credentialsLength",
             "WLAN-Zugangsdaten konnten nicht gespeichert werden": "credentialsSaveFailed",
-            "Pillen-Adresse, Name und Brewfather-URL sind erforderlich": "pillFieldsRequired",
-            "Bitte eine gültige Adresse, einen Namen und die vollständige Brewfather-URL eingeben": "pillFieldsInvalid",
+            "Pillen-Adresse und Name sind erforderlich": "pillFieldsRequired",
+            "Bitte eine gültige Pillen-Adresse und einen Namen eingeben": "pillFieldsInvalid",
+            "Die Brewfather-URL beginnt mit http://. Bitte den Anfang zu https:// ändern, bevor du speicherst.": "brewfatherHttpUrl",
+            "Ungültige Brewfather-URL. Bitte die vollständige Custom-Stream-URL mit https://log.brewfather.net/stream?id= eingeben.": "brewfatherUrlInvalid",
             "Der Brewfather-Gerätename wird bereits für eine andere Pill verwendet": "duplicatePillName",
             "Maximal 12 Pills können konfiguriert werden": "pillLimit",
             "Pill-Konfiguration konnte nicht gespeichert werden": "pillSaveFailed",
@@ -171,7 +317,12 @@
             "WLAN-Verbindung erforderlich": "wifiRequired",
             "Kein aktueller Messwert verfügbar": "sampleUnavailable",
             "HTTPS-Verbindung konnte nicht gestartet werden": "httpsStartFailed",
-            "API-Endpunkt nicht gefunden": "endpointNotFound"
+            "API-Endpunkt nicht gefunden": "endpointNotFound",
+            "Admin password must be 12 to 64 characters": "authPasswordLength",
+            "Admin password is incorrect": "authPasswordIncorrect",
+            "Too many failed logins; wait five minutes and try again": "authLoginLocked",
+            "Admin password could not be saved": "authPasswordSaveFailed",
+            "Factory reset failed: settings could not be cleared": "factoryResetNvsFailed"
         };
         function localizeError(error) {
             const message = String(error);
@@ -202,8 +353,8 @@
             document.querySelectorAll("[data-i18n]").forEach(element => {
                 element.textContent = t(element.dataset.i18n);
             });
-            refreshStatus();
-            refreshPills();
+            renderAuth();
+            refreshStatus().then(refreshPills);
         }
 
         document.getElementById("language").addEventListener("change", event => {
@@ -220,18 +371,229 @@
             return currentLanguage === "de" ? `${minutes} Min.` : `${minutes} min`;
         }
 
+        function formatTimestamp(epochSeconds) {
+            return new Intl.DateTimeFormat(
+                currentLanguage === "de" ? "de-DE" : "en-US",
+                { dateStyle: "short", timeStyle: "medium" }
+            ).format(new Date(epochSeconds * 1000));
+        }
+
         const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, character => ({
             "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
         })[character]);
 
-        async function request(url, options) {
-            const response = await fetch(url, options);
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-            return data;
+        function rssiClass(rssi) {
+            if (rssi >= -65) return "rssi-good";
+            if (rssi >= -75) return "rssi-medium";
+            return "rssi-weak";
         }
 
+        async function request(url, options = {}) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000);
+            try {
+                const response = await fetch(
+                    url, { ...options, signal: controller.signal });
+                let data;
+                try {
+                    data = await response.json();
+                } catch {
+                    data = {};
+                }
+                if (!response.ok) {
+                    if (response.status === 401 && url !== "/api/auth/status") {
+                        await refreshAuth();
+                    }
+                    throw new Error(data.error || `HTTP ${response.status}`);
+                }
+                return data;
+            } finally {
+                clearTimeout(timeout);
+            }
+        }
+
+        let authState = null;
+        const sessionMarkerKey = "raptgetaway-session-active";
+        function renderAuth() {
+            if (!authState) return;
+            const panel = document.getElementById("authPanel");
+            const content = document.getElementById("adminContent");
+            const form = document.getElementById("authForm");
+            const message = document.getElementById("authMessage");
+            content.hidden = !authState.authenticated;
+            panel.hidden = authState.authenticated;
+            document.getElementById("logout").textContent = t("logout");
+            document.getElementById("logout").hidden = !authState.authenticated;
+            const settingsToggle = document.getElementById("settingsToggle");
+            settingsToggle.hidden =
+                !authState.authenticated || authState.setupAccess;
+            const setupNotice = document.getElementById("setupNotice");
+            setupNotice.hidden = !authState.setupAccess;
+            setupNotice.textContent = authState.setupAccess ? t("setupNotice") : "";
+            document.getElementById("settingsPanel").hidden =
+                !authState.setupAccess;
+            document.getElementById("factoryResetSection").hidden =
+                authState.setupAccess;
+            document.getElementById("pillsSection").hidden =
+                authState.setupAccess;
+            if (authState.authenticated) return;
+
+            const isSetup = !authState.adminConfigured;
+            document.getElementById("authHeading").textContent =
+                t(isSetup ? "authSetupHeading" : "authLoginHeading");
+            document.getElementById("authInstructions").textContent =
+                t(isSetup
+                    ? (authState.setupAccess ? "authSetupInstructions" : "httpsOnlySetup")
+                    : "authLoginInstructions");
+            const certificateInfo = document.getElementById("certificateInfo");
+            certificateInfo.innerHTML = "";
+            certificateInfo.hidden = !authState.setupAccess;
+            if (authState.setupAccess && authState.certificateFingerprint) {
+                const fingerprintLabel = document.createElement("p");
+                fingerprintLabel.textContent = t("authFingerprint");
+                const fingerprint = document.createElement("code");
+                fingerprint.className = "fingerprint";
+                fingerprint.textContent = authState.certificateFingerprint;
+                const copyButton = document.createElement("button");
+                copyButton.type = "button";
+                copyButton.textContent = t("authCopyFingerprint");
+                copyButton.addEventListener("click", async () => {
+                    try {
+                        if (navigator.clipboard && window.isSecureContext) {
+                            await navigator.clipboard.writeText(
+                                authState.certificateFingerprint);
+                        } else {
+                            const temporaryInput = document.createElement("textarea");
+                            temporaryInput.value = authState.certificateFingerprint;
+                            temporaryInput.style.position = "fixed";
+                            temporaryInput.style.opacity = "0";
+                            document.body.appendChild(temporaryInput);
+                            temporaryInput.select();
+                            const copied = document.execCommand("copy");
+                            temporaryInput.remove();
+                            if (!copied) throw new Error("Copy command failed");
+                        }
+                        message.textContent = t("authFingerprintCopied");
+                    } catch {
+                        message.textContent = t("authFingerprintCopyFailed");
+                    }
+                });
+                certificateInfo.append(fingerprintLabel, fingerprint, copyButton);
+            }
+            form.innerHTML = isSetup && !authState.setupAccess ? "" : `
+                <label for="adminPassword">${escapeHtml(t("authPassword"))}</label>
+                <input id="adminPassword" name="password" type="password" required
+                    minlength="${isSetup ? "12" : "1"}" maxlength="64" autocomplete="${isSetup ? "new-password" : "current-password"}">
+                ${isSetup ? `<label for="confirmPassword">${escapeHtml(t("authConfirmPassword"))}</label>
+                    <input id="confirmPassword" name="confirmPassword" type="password" required minlength="12" maxlength="64" autocomplete="new-password">` : ""}
+                <button type="submit">${escapeHtml(t(isSetup ? "authSetPassword" : "authSignIn"))}</button>`;
+            form.onsubmit = async event => {
+                event.preventDefault();
+                message.textContent = "";
+                const submitButton = form.querySelector('button[type="submit"]');
+                submitButton.disabled = true;
+                submitButton.textContent = t("authCheckingPassword");
+                const password = form.elements.password.value;
+                if (isSetup && password !== form.elements.confirmPassword.value) {
+                    message.textContent = t("authPasswordMismatch");
+                    submitButton.disabled = false;
+                    submitButton.textContent = t("authSetPassword");
+                    return;
+                }
+                try {
+                    const result = await request(isSetup ? "/api/auth/setup" : "/api/auth/login", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ password })
+                    });
+                    form.reset();
+                    if (isSetup && result.setupApWillClose) {
+                        form.innerHTML = "";
+                        message.textContent = t("authSetupComplete", {
+                            hostname: result.hostname
+                        });
+                        return;
+                    }
+                    await refreshAuth();
+                } catch (error) {
+                    message.textContent = t(
+                        isSetup ? "authSetupFailed" : "authLoginFailed",
+                        { error: localizeError(error.message) });
+                    submitButton.disabled = false;
+                    submitButton.textContent = t(
+                        isSetup ? "authSetPassword" : "authSignIn");
+                }
+            };
+        }
+
+        async function refreshAuth() {
+            try {
+                const hadPriorSession = authState?.authenticated === true ||
+                    sessionStorage.getItem(sessionMarkerKey) === "true";
+                authState = await request("/api/auth/status");
+                renderAuth();
+                if (authState.authenticated) {
+                    sessionStorage.setItem(sessionMarkerKey, "true");
+                } else if (hadPriorSession) {
+                    sessionStorage.removeItem(sessionMarkerKey);
+                    document.getElementById("authMessage").textContent =
+                        t("authSessionReplaced");
+                }
+                if (authState.authenticated) {
+                    await refreshStatus();
+                    await refreshPills();
+                }
+            } catch (error) {
+                authState = null;
+                document.getElementById("adminContent").hidden = true;
+                document.getElementById("authPanel").hidden = false;
+                document.getElementById("authHeading").textContent =
+                    t("authLoginHeading");
+                document.getElementById("authInstructions").textContent = "";
+                document.getElementById("authForm").innerHTML = "";
+                document.getElementById("authMessage").textContent =
+                    t("statusError", { error: localizeError(error.message) });
+                document.getElementById("gatewayStatus").textContent =
+                    t("statusError", { error: localizeError(error.message) });
+            }
+        }
+
+        document.getElementById("logout").addEventListener("click", async () => {
+            try {
+                await request("/api/auth/logout", { method: "POST" });
+                sessionStorage.removeItem(sessionMarkerKey);
+                await refreshAuth();
+            } catch (error) {
+                document.getElementById("authMessage").textContent =
+                    t("error", { error: localizeError(error.message) });
+            }
+        });
+
+        document.getElementById("settingsToggle").addEventListener("click", event => {
+            const panel = document.getElementById("settingsPanel");
+            panel.hidden = !panel.hidden;
+            event.currentTarget.setAttribute("aria-expanded", String(!panel.hidden));
+        });
+
+        document.getElementById("factoryReset").addEventListener("click", async () => {
+            if (!window.confirm(t("factoryResetConfirm"))) return;
+            const button = document.getElementById("factoryReset");
+            const message = document.getElementById("factoryResetMessage");
+            button.disabled = true;
+            try {
+                await request("/api/factory-reset", { method: "POST" });
+                sessionStorage.removeItem(sessionMarkerKey);
+                message.textContent = t("factoryResetting");
+            } catch (error) {
+                message.textContent = t("factoryResetFailed", {
+                    error: localizeError(error.message)
+                });
+                button.disabled = false;
+            }
+        });
+
         async function refreshStatus() {
+            if (!authState?.authenticated) return;
             try {
                 const status = await request("/api/status");
                 let message;
@@ -239,24 +601,29 @@
                     message = t("wifiConnected", {
                         ssid: escapeHtml(status.wifiSsid),
                         ip: escapeHtml(status.ip),
+                        rssi: `<span class="${rssiClass(Number(status.wifiRssi))}">${Number(status.wifiRssi)}</span>`,
                         count: status.pillCount
                     });
+                    document.getElementById("gatewayStatus").innerHTML = message;
                 } else if (status.setupApActive && status.wifiConfigured) {
                     message = t("fallbackApActive", {
                         duration: formatDuration(status.setupApActiveForSeconds),
                         ssid: escapeHtml(status.setupSsid),
                         ip: escapeHtml(status.ip)
                     });
+                    document.getElementById("gatewayStatus").textContent = message;
                 } else if (status.setupApActive) {
                     message = t("setupApActive", {
                         ssid: escapeHtml(status.setupSsid),
                         ip: escapeHtml(status.ip)
                     });
+                    document.getElementById("gatewayStatus").textContent = message;
                 } else {
                     message = t("wifiDisconnected", { ip: escapeHtml(status.ip) });
+                    document.getElementById("gatewayStatus").textContent = message;
                 }
-                document.getElementById("gatewayStatus").textContent = message;
             } catch (error) {
+                if (!authState?.authenticated) return;
                 document.getElementById("gatewayStatus").textContent =
                     t("statusError", { error: localizeError(error.message) });
             }
@@ -271,7 +638,7 @@
                 const networks = await request("/api/wifi/scan");
                 select.innerHTML = networks.length
                     ? `<option value="">${escapeHtml(t("chooseNetwork"))}</option>` + networks.map(network =>
-                        `<option value="${escapeHtml(network.ssid)}">${escapeHtml(network.ssid)} (${network.rssi} dBm)${network.secure ? "" : escapeHtml(t("open"))}</option>`
+                        `<option class="${rssiClass(Number(network.rssi))}" value="${escapeHtml(network.ssid)}">${escapeHtml(network.ssid)} (${Number(network.rssi)} dBm)${network.secure ? "" : escapeHtml(t("open"))}</option>`
                     ).join("")
                     : `<option value="">${escapeHtml(t("noNetworks"))}</option>`;
             } catch (error) {
@@ -304,6 +671,7 @@
         });
 
         async function refreshPills() {
+            if (!authState?.authenticated) return;
             if (document.activeElement?.closest("#pills form")) return;
             const container = document.getElementById("pills");
             try {
@@ -317,15 +685,60 @@
                     const measurement = pill.temperature === undefined
                         ? (pill.online ? t("noDecodedMeasurement") : t("waitingMeasurement"))
                         : `${Number(pill.temperature).toFixed(2)} °C · SG ${Number(pill.gravity).toFixed(4)} · ${currentLanguage === "de" ? "Batterie" : "Battery"} ${Number(pill.batteryPercent).toFixed(0)} % (${Number(pill.batteryVolts).toFixed(2)} V)`;
+                    const seenState = pill.online
+                        ? t("online")
+                        : pill.lastSeenAgeSeconds !== undefined
+                            ? t("lastSeenAgo", {
+                                duration: formatDuration(Number(pill.lastSeenAgeSeconds))
+                            })
+                            : t("lastNotSeen");
+                    const lastMeasurement = !pill.online
+                        ? pill.lastMeasurementAgeSeconds !== undefined
+                            ? t("lastMeasurementAgo", {
+                                duration: formatDuration(Number(pill.lastMeasurementAgeSeconds))
+                            })
+                            : t("noMeasurementsYet")
+                        : "";
+                    const sendState = !pill.configured
+                        ? ""
+                        : !pill.urlConfigured
+                            ? t("streamUrlRequired")
+                            : !pill.hasBrewfatherResult
+                                ? t("noSendResult")
+                                : pill.lastBrewfatherSucceeded
+                                    ? t("sendAccepted", { status: pill.lastBrewfatherStatus })
+                                    : t("sendFailed", { status: pill.lastBrewfatherStatus });
+                    const sendStateWithTime = sendState &&
+                            pill.lastBrewfatherResultEpoch
+                        ? `${sendState} ${t("sendTime", {
+                            time: formatTimestamp(
+                                Number(pill.lastBrewfatherResultEpoch))
+                        })}`
+                        : sendState;
                     return `<article class="pill">
                         <h3>${escapeHtml(pill.name || t("newPill"))}</h3>
-                        <div class="muted">${escapeHtml(pill.address)} · <span class="${pill.online ? "online" : "offline"}">${pill.online ? "online" : escapeHtml(t("lastNotSeen"))}</span></div>
+                        <div class="pill-meta muted">
+                            <span>${escapeHtml(pill.address)}</span>
+                            <span class="${pill.online ? "online" : "offline"}">${escapeHtml(seenState)}</span>
+                            ${pill.online && pill.hasBleRssi ? `<span class="ble-signal">${escapeHtml(t("bleSignal"))} <span class="${rssiClass(Number(pill.bleRssi))}">${Number(pill.bleRssi)} dBm</span></span>` : ""}
+                            ${lastMeasurement ? `<span>${escapeHtml(lastMeasurement)}</span>` : ""}
+                        </div>
                         <p class="measurements">${escapeHtml(measurement)}</p>
+                        ${sendStateWithTime ? `<p class="status">${escapeHtml(sendStateWithTime)}</p>` : ""}
                         <form data-address="${escapeHtml(pill.address)}">
                             <label for="name-${index}">${escapeHtml(t("nameInBrewfather"))}</label>
                             <input id="name-${index}" name="name" maxlength="47" required value="${escapeHtml(pill.name || "")}" placeholder="Red Pill">
                             <label for="url-${index}">${escapeHtml(t("streamUrl"))}</label>
-                            <input id="url-${index}" name="url" type="url" required value="${escapeHtml(pill.url || "")}" placeholder="https://log.brewfather.net/stream?id=...">
+                            <input id="url-${index}" name="url" type="url" ${pill.configured && pill.urlConfigured ? "" : "required"} placeholder="https://log.brewfather.net/stream?id=...">
+                            ${pill.configured && pill.urlConfigured ? `<p class="muted">${escapeHtml(t("streamUrlHelp"))}</p>` : ""}
+                            <label for="interval-${index}">${escapeHtml(t("uploadInterval"))}</label>
+                            <select id="interval-${index}" name="intervalMinutes">
+                                <option value="15" ${Number(pill.intervalMinutes || 30) === 15 ? "selected" : ""}>${escapeHtml(t("interval15m"))}</option>
+                                <option value="30" ${Number(pill.intervalMinutes || 30) === 30 ? "selected" : ""}>${escapeHtml(t("interval30m"))}</option>
+                                <option value="60" ${Number(pill.intervalMinutes || 30) === 60 ? "selected" : ""}>${escapeHtml(t("interval1h"))}</option>
+                                <option value="120" ${Number(pill.intervalMinutes || 30) === 120 ? "selected" : ""}>${escapeHtml(t("interval2h"))}</option>
+                                <option value="240" ${Number(pill.intervalMinutes || 30) === 240 ? "selected" : ""}>${escapeHtml(t("interval4h"))}</option>
+                            </select>
                             <button type="submit">${escapeHtml(t("savePill"))}</button>
                             ${pill.configured ? `<button type="button" data-test>${escapeHtml(t("testSend"))}</button><p class="muted">${escapeHtml(t("testSendHelp"))}</p>` : ""}
                             ${pill.configured ? `<button class="danger" type="button" data-delete>${escapeHtml(t("deleteConfig"))}</button>` : ""}
@@ -345,7 +758,8 @@
                             body: JSON.stringify({
                                 address: form.dataset.address,
                                 name: form.elements.name.value,
-                                url: form.elements.url.value
+                                url: form.elements.url.value,
+                                intervalMinutes: Number(form.elements.intervalMinutes.value)
                             })
                         });
                         message.textContent = t("pillSaved");
@@ -386,13 +800,35 @@
                     }
                 }));
             } catch (error) {
+                if (!authState?.authenticated) return;
                 container.innerHTML = `<p class="message">${escapeHtml(t("pillSearchFailed", { error: localizeError(error.message) }))}</p>`;
             }
         }
 
         setLanguage(currentLanguage);
-        setInterval(refreshStatus, 5000);
-        setInterval(refreshPills, 5000);
+        let nextPollRefreshesPills = true;
+        let pollInProgress = true;
+        refreshAuth().finally(() => {
+            pollInProgress = false;
+        });
+        setInterval(async () => {
+            if (pollInProgress) return;
+            pollInProgress = true;
+            try {
+                if (!authState) {
+                    await refreshAuth();
+                } else if (authState.authenticated) {
+                    if (nextPollRefreshesPills) {
+                        await refreshPills();
+                    } else {
+                        await refreshStatus();
+                    }
+                    nextPollRefreshesPills = !nextPollRefreshesPills;
+                }
+            } finally {
+                pollInProgress = false;
+            }
+        }, 5000);
     </script>
 </body>
 </html>

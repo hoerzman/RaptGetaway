@@ -15,7 +15,11 @@ was developed with substantial coding assistance from GitHub Copilot.
 - Supports up to 12 configured Pills, each with its own Brewfather stream URL.
   Testing so far has been limited to two Pills; support for more has not yet
   been verified in practice.
+- Configures an automatic Brewfather upload interval independently for each
+  Pill: 15 or 30 minutes, or 1, 2, or 4 hours. The default is 30 minutes.
 - Provides a web interface in English and German.
+- Shows the latest BLE signal strength for discovered Pills and colors BLE and
+  Wi-Fi RSSI values as a rough signal-quality indication.
 - Scans Wi-Fi networks and saves the selected network on the ESP32.
 - Turns off the setup access point after connecting to Wi-Fi and enables it
   again if the Wi-Fi connection is lost.
@@ -56,12 +60,49 @@ The setup access point is named **RaptGateway-Setup**. Connect using the
 password configured in `include/config_local.h`, then open
 `http://192.168.4.1`.
 
-Select the home Wi-Fi network, enter its password, and save. After the ESP32
-connects, the setup access point turns off. Find the ESP32's assigned address
-in the router's client list and open that address to return to the web page.
-If the home Wi-Fi is lost later, the setup access point is enabled as a
-fallback. BLE scanning runs while the ESP32 is connected to Wi-Fi.
+On first setup, create an administrator password (12–64 characters) before
+configuring Wi-Fi. Select the home Wi-Fi network, enter its password, and save.
+The setup access point remains active until both an administrator password is
+set and the ESP32 connects to Wi-Fi (including when updating an older
+installation without a password). The web page is then available at the
+device-specific mDNS address printed to the serial console,
+for example `https://raptgetaway-a1b2c3.local/`. The gateway generates and
+persists its own self-signed certificate and private key; identities are not
+shared between devices.
+
+Browsers do not automatically trust a self-signed certificate. Before accepting
+the browser's certificate warning, compare the certificate's SHA-256 fingerprint
+with the fingerprint printed in the device serial console. Do not treat the
+warning as safe to ignore without this independent comparison. Use the mDNS
+hostname, not the router-assigned IP address, because the certificate is issued
+for that hostname. Sign in with the administrator password to manage the
+gateway.
+
+The setup web page uses HTTP only while the WPA2-protected setup access point is
+active. Once connected to home Wi-Fi, plain HTTP requests are redirected to
+HTTPS and administration APIs are not served over the LAN HTTP interface. If
+the home Wi-Fi is lost later, the setup access point is enabled as a fallback.
+BLE scanning runs while the ESP32 is connected to Wi-Fi.
 <img width="604" height="585" alt="2026-10-28 17_21_15-RaptGetawayWifi setup" src="https://github.com/user-attachments/assets/90aea3bc-767a-4d3f-ba77-8b8a556dceee" />
+
+The setup page includes common Android, Apple, and Windows captive-portal
+detection URLs and redirects those checks to the setup page. Automatic portal
+pop-ups are controlled by the phone/computer operating system and are not
+guaranteed; if no pop-up appears, open `http://192.168.4.1` manually.
+
+The setup page focuses on administrator-password and Wi-Fi setup; it does not
+show Pill discovery. On the HTTPS administration page, Pill management is shown
+first and Wi-Fi and factory-reset controls are under **Settings**. The
+**Settings** and **Sign out** buttons are side by side below the language
+selector. The status line includes the connected Wi-Fi signal strength (RSSI)
+in dBm.
+
+To clear Wi-Fi settings, Pill configuration, the administrator password, and
+the generated TLS identity, use **Settings → Factory reset** while signed in,
+or hold **GPIO4** connected to **GND** for at least five seconds. The ESP32
+then clears its saved settings and restarts. The setup access point password
+in `config_local.h` is build-time configuration and is not changed by this
+reset.
 
 ## Configure Pills and Brewfather
 
@@ -81,10 +122,23 @@ stores its Wi-Fi and Pill configuration in non-volatile storage.
 
 Each configured Pill has a **Test send now** button. It sends that Pill's
 latest measurement immediately when the sample is no more than 20 minutes old.
-A test send restarts that Pill's 15-minute automatic upload interval.
+A test send restarts that Pill's configured automatic upload interval. The
+interval can be set independently for each Pill to 15 or 30 minutes, or 1, 2,
+or 4 hours; newly configured Pills default to 30 minutes. Existing saved Pill
+configurations without an interval also adopt the 30-minute default. After each
+gateway boot, the first automatic send is attempted as soon as Wi-Fi, a recent
+Pill measurement, and synchronized time are available; subsequent attempts use
+the configured interval.
 Brewfather may enforce its own rate limit.
 <img width="603" height="717" alt="2026-10-28 17_22_20-PillConfig" src="https://github.com/user-attachments/assets/a998cb97-e067-44ad-8711-2c73846b600b" />
 
+
+After saving a Brewfather URL, the gateway does not show or return it in the
+web interface or API. The page indicates that a URL is configured and shows
+the latest Brewfather send result and its date/time in the browser's local time
+zone since the device started; both accepted and rejected responses include the
+time when available. To change the URL, enter a replacement; leave the field
+blank to keep the saved URL.
 
 ## Data sent
 
@@ -93,13 +147,22 @@ The gateway sends temperature in degrees Celsius, gravity as specific gravity
 with `gravity_unit: "G"`. The Pill's gravity value is SG even when the RAPT app
 displays degrees Plato.
 
+The administration page shows the latest received BLE RSSI for each Pill.
+For an online Pill, the BLE signal appears beside the address and online status.
+When a Pill is not recently seen, the page shows when its last advertisement and
+last measurement were received. Wi-Fi and BLE RSSI values are colored green at
+-65 dBm or stronger, yellow from -75 to -66 dBm, and orange below -75 dBm.
+These are rough signal-quality bands, not a distance estimate; radio conditions
+can make readings fluctuate.
+
 RAPT reports battery percentage. The gateway estimates voltage using
 `3.3 + (percentage / 100 × 0.9)` and sends this estimate in Brewfather's
 `battery` field. It is not a direct battery-voltage measurement.
 
 Brewfather allows at most one update per device name every 15 minutes. The
-gateway tracks this interval independently for each Pill and sends only recent
-measurements. After boot, it waits 15 minutes before its first automatic post.
+gateway tracks the configured interval independently for each Pill and sends
+only recent measurements. After boot, it waits that Pill's configured interval
+before its first automatic post.
 
 ## Tests and diagnostics
 
@@ -124,10 +187,32 @@ check the password in the local configuration header.
 ## Security notes
 
 - Use a unique setup access point password and protect Brewfather stream URLs.
-- The gateway currently encrypts HTTPS but does not validate the Brewfather
-  server certificate. Use only on a trusted network until certificate
-  validation is added.
-- The setup web server is intended for use on a trusted local network.
+- Outbound Brewfather HTTPS validates the server certificate chain against the
+  Mozilla CA bundle embedded in the firmware and checks the requested hostname.
+  The gateway synchronizes its clock with SNTP before sending; if time is not
+  synchronized or TLS verification fails, the request is not sent. Refresh the
+  root bundle during firmware maintenance; its source and generation details
+  are recorded in [certs/README.md](./certs/README.md).
+- Initial administration is password-protected and limited to the setup access
+  point. Home-network administration uses HTTPS and a password-protected
+  session; only one administrator session is active at a time. Signing in from
+  another browser or device invalidates the previous session, and the previous
+  browser reports that it needs to sign in again. The self-signed certificate
+  must be verified out-of-band using its SHA-256 fingerprint.
+- Wi-Fi credentials, Pill configuration, the administrator password verifier,
+  and the generated TLS private key are stored in ESP32 NVS. They are not
+  protected against physical flash extraction unless flash encryption is
+  provisioned and enabled for the deployed device. A factory reset clears
+  stored settings but is not a substitute for flash encryption.
+- Hiding saved Brewfather URLs from the page/API reduces accidental disclosure.
+  The URLs still exist in device storage and are used for outbound requests.
+- RAPT Pill readings arrive as unauthenticated BLE advertisements. The
+  documented v1/v2 payloads contain no signature or message-authentication
+  field; the v1 MAC and BLE address identify a device but do not prove who
+  transmitted the reading. A nearby transmitter may spoof measurements.
+  There is no gateway-only way to verify a reading's origin with this format;
+  that requires protocol support from RAPT and the Pill. Treat readings as
+  untrusted telemetry, not as authenticated evidence.
 
 ## Parser and third-party components
 
