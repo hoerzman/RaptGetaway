@@ -130,7 +130,9 @@ gateway boot, the first automatic send is attempted as soon as Wi-Fi, a recent
 Pill measurement, and synchronized time are available; subsequent attempts use
 the configured interval.
 Brewfather may enforce its own rate limit.
-<img width="603" height="717" alt="2026-10-28 17_22_20-PillConfig" src="https://github.com/user-attachments/assets/a998cb97-e067-44ad-8711-2c73846b600b" />
+
+<img width="699" height="806" alt="2026-10-29 17_19_46-RaptGetaway" src="https://github.com/user-attachments/assets/7cfb7408-9f07-4d83-94ce-f3be0cc9df04" />
+
 
 
 After saving a Brewfather URL, the gateway does not show or return it in the
