@@ -24,6 +24,7 @@ constexpr size_t PASSWORD_HASH_SIZE = 32;
 constexpr uint32_t PASSWORD_HASH_ITERATIONS = 100000;
 constexpr uint32_t SESSION_LIFETIME_MS = 30UL * 60UL * 1000UL;
 constexpr uint32_t CERTIFICATE_TASK_STACK_SIZE = 16384;
+constexpr uint8_t TLS_IDENTITY_VERSION = 2;
 
 char certificatePem[CERTIFICATE_BUFFER_SIZE] = {};
 char privateKeyPem[PRIVATE_KEY_BUFFER_SIZE] = {};
@@ -124,7 +125,7 @@ bool generateCertificate()
     }
 
     snprintf(hostname, sizeof(hostname),
-             "raptgetaway-%02x%02x%02x.local", mac[3], mac[4], mac[5]);
+             "raptgetaway-%02x%02x%02x", mac[3], mac[4], mac[5]);
     char commonName[48] = {};
     snprintf(commonName, sizeof(commonName),
              "RaptGateway-%02X%02X%02X", mac[3], mac[4], mac[5]);
@@ -146,17 +147,25 @@ bool generateCertificate()
     uint8_t subjectAltName[64] = {};
     size_t sanLength = 0;
     const size_t hostnameLength = strlen(hostname);
-    if (hostnameLength > 60)
+    char mdnsHostname[sizeof(hostname) + sizeof(".local")] = {};
+    snprintf(mdnsHostname, sizeof(mdnsHostname), "%s.local", hostname);
+    const size_t mdnsHostnameLength = strlen(mdnsHostname);
+    if (hostnameLength > 60 || mdnsHostnameLength > 60)
     {
         goto cleanup;
     }
 
     subjectAltName[sanLength++] = 0x30;
-    subjectAltName[sanLength++] = static_cast<uint8_t>(hostnameLength + 2);
+    subjectAltName[sanLength++] = static_cast<uint8_t>(
+        hostnameLength + mdnsHostnameLength + 4);
     subjectAltName[sanLength++] = 0x82;
     subjectAltName[sanLength++] = static_cast<uint8_t>(hostnameLength);
     memcpy(subjectAltName + sanLength, hostname, hostnameLength);
     sanLength += hostnameLength;
+    subjectAltName[sanLength++] = 0x82;
+    subjectAltName[sanLength++] = static_cast<uint8_t>(mdnsHostnameLength);
+    memcpy(subjectAltName + sanLength, mdnsHostname, mdnsHostnameLength);
+    sanLength += mdnsHostnameLength;
 
     esp_fill_random(serialBytes, sizeof(serialBytes));
     serialBytes[0] &= 0x7f;
@@ -294,7 +303,8 @@ bool validateCertificateKeyPair()
 bool initializeWebSecurityWithLargeStack(Preferences& preferences)
 {
     bool loaded = false;
-    if (preferences.isKey("tlsCert") && preferences.isKey("tlsKey"))
+    if (preferences.getUChar("tlsVersion", 0) == TLS_IDENTITY_VERSION &&
+        preferences.isKey("tlsCert") && preferences.isKey("tlsKey"))
     {
         const String savedCertificate = preferences.getString("tlsCert");
         const String savedKey = preferences.getString("tlsKey");
@@ -317,7 +327,8 @@ bool initializeWebSecurityWithLargeStack(Preferences& preferences)
             return false;
         }
         if (preferences.putString("tlsCert", certificatePem) == 0 ||
-            preferences.putString("tlsKey", privateKeyPem) == 0)
+            preferences.putString("tlsKey", privateKeyPem) == 0 ||
+            preferences.putUChar("tlsVersion", TLS_IDENTITY_VERSION) == 0)
         {
             Serial.println("HTTPS identity could not be saved to NVS");
             return false;
@@ -330,7 +341,7 @@ bool initializeWebSecurityWithLargeStack(Preferences& preferences)
         return false;
     }
     snprintf(hostname, sizeof(hostname),
-             "raptgetaway-%02x%02x%02x.local", mac[3], mac[4], mac[5]);
+             "raptgetaway-%02x%02x%02x", mac[3], mac[4], mac[5]);
     if (!calculateFingerprint())
     {
         Serial.println("HTTPS certificate fingerprint could not be calculated");

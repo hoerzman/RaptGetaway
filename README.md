@@ -66,23 +66,38 @@ configuring Wi-Fi. Select the home Wi-Fi network, enter its password, and save.
 The setup access point remains active until both an administrator password is
 set and the ESP32 connects to Wi-Fi (including when updating an older
 installation without a password). The web page is then available at the
-device-specific mDNS address printed to the serial console,
-for example `https://raptgetaway-a1b2c3.local/`. The gateway generates and
-persists its own self-signed certificate and private key; identities are not
-shared between devices.
+device-specific hostname printed to the serial console, for example
+`https://raptgetaway-a1b2c3/`. The ESP32 uses this hostname for its Wi-Fi
+station hostname and mDNS; the certificate also includes the `.local` mDNS
+name, for example `https://raptgetaway-a1b2c3.local/`. The gateway generates
+and persists its own self-signed certificate and private key; identities are
+not shared between devices. The first boot after upgrading from an older
+firmware regenerates the certificate to include both hostname forms, so its
+SHA-256 fingerprint changes.
 
 Browsers do not automatically trust a self-signed certificate. Before accepting
 the browser's certificate warning, compare the certificate's SHA-256 fingerprint
 with the fingerprint printed in the device serial console. Do not treat the
-warning as safe to ignore without this independent comparison. Use the mDNS
-hostname, not the router-assigned IP address, because the certificate is issued
-for that hostname. Sign in with the administrator password to manage the
-gateway.
+warning as safe to ignore without this independent comparison. When opening the
+device's HTTP address, the gateway shows links for its short hostname, mDNS
+name, and current Wi-Fi IP address. Prefer one of the hostnames: opening the
+IP link causes a certificate-name warning because the certificate is issued
+for the hostnames, not the IP. Sign in with the administrator password to
+manage the gateway.
+
+After an administrator password has been configured and the gateway is
+connected to home Wi-Fi, its HTTPS sign-in page also shows a read-only list of
+configured Pill names and whether each is online or when it was last seen.
+This limited status is visible without signing in to anyone who can reach the
+gateway over HTTPS. Pill addresses, measurements, Brewfather results, and
+configuration changes remain available only after administrator sign-in.
 
 The setup web page uses HTTP only while the WPA2-protected setup access point is
-active. Once connected to home Wi-Fi, plain HTTP requests are redirected to
-HTTPS and administration APIs are not served over the LAN HTTP interface. If
-the home Wi-Fi is lost later, the setup access point is enabled as a fallback.
+active. Once connected to home Wi-Fi, the HTTP root page provides HTTPS access
+links instead of redirecting immediately, so visitors can choose the direct
+IP link if local DNS or mDNS cannot resolve the hostname. Administration APIs
+are not served over the LAN HTTP interface. If the home Wi-Fi is lost later,
+the setup access point is enabled as a fallback.
 BLE scanning runs while the ESP32 is connected to Wi-Fi.
 <img width="604" height="585" alt="2026-10-28 17_21_15-RaptGetawayWifi setup" src="https://github.com/user-attachments/assets/90aea3bc-767a-4d3f-ba77-8b8a556dceee" />
 
@@ -96,7 +111,10 @@ show Pill discovery. On the HTTPS administration page, Pill management is shown
 first and Wi-Fi and factory-reset controls are under **Settings**. The
 **Settings** and **Sign out** buttons are side by side below the language
 selector. The status line includes the connected Wi-Fi signal strength (RSSI)
-in dBm.
+in dBm. Pill entries show online/last-seen state, BLE signal strength, and the
+latest Brewfather result and send time in a compact overview. Expand an entry
+to view measurements or edit that Pill's settings. The information icon beside
+the actions explains what saving, test sending, and deleting do.
 
 To clear Wi-Fi settings, Pill configuration, the administrator password, and
 the generated TLS identity, use **Settings → Factory reset** while signed in,
@@ -131,6 +149,8 @@ gateway boot, the first automatic send is attempted as soon as Wi-Fi, a recent
 Pill measurement, and synchronized time are available; subsequent attempts use
 the configured interval.
 Brewfather may enforce its own rate limit.
+
+In testing, Brewfather uploads have run stably over several hours.
 
 <img width="699" height="806" alt="2026-10-29 17_19_46-RaptGetaway" src="https://github.com/user-attachments/assets/7cfb7408-9f07-4d83-94ce-f3be0cc9df04" />
 
@@ -183,8 +203,9 @@ RAPT reports battery percentage. The gateway estimates voltage using
 
 Brewfather allows at most one update per device name every 15 minutes. The
 gateway tracks the configured interval independently for each Pill and sends
-only recent measurements. After boot, it waits that Pill's configured interval
-before its first automatic post.
+only recent measurements. After boot, it attempts the first automatic post
+when Wi-Fi, a recent measurement, and synchronized time are available; later
+attempts use that Pill's configured interval.
 
 ## Tests and diagnostics
 

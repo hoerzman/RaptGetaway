@@ -1057,6 +1057,56 @@ void handlePillsGet()
     sendJson(200, document);
 }
 
+void handlePublicPillsGet()
+{
+    if (!hasAdminPassword(preferences) || WiFi.status() != WL_CONNECTED)
+    {
+        sendResponse(403, "application/json",
+                     "{\"error\":\"Public Pill status is unavailable\"}");
+        return;
+    }
+
+    PillConfiguration configurations[MAX_PILLS] = {};
+    PillRuntime runtimes[MAX_DISCOVERED_PILLS] = {};
+    size_t configurationCount = 0;
+    portENTER_CRITICAL(&stateMux);
+    configurationCount = pillConfigurationCount;
+    memcpy(configurations, pillConfigurations, sizeof(configurations));
+    memcpy(runtimes, discoveredPills, sizeof(runtimes));
+    portEXIT_CRITICAL(&stateMux);
+
+    const uint32_t now = millis();
+    JsonDocument document;
+    JsonArray pills = document.to<JsonArray>();
+    for (size_t i = 0; i < configurationCount; ++i)
+    {
+        const PillConfiguration& configuration = configurations[i];
+        const PillRuntime* runtime = nullptr;
+        for (const PillRuntime& candidate : runtimes)
+        {
+            if (candidate.address[0] != '\0' &&
+                strcmp(candidate.address, configuration.address) == 0)
+            {
+                runtime = &candidate;
+                break;
+            }
+        }
+
+        JsonObject pill = pills.add<JsonObject>();
+        pill["name"] = configuration.name;
+        const bool hasBeenSeen = runtime != nullptr;
+        pill["online"] = hasBeenSeen &&
+                         static_cast<uint32_t>(now - runtime->lastSeen) <=
+                             DISCOVERY_MAX_AGE_MS;
+        if (hasBeenSeen)
+        {
+            pill["lastSeenAgeSeconds"] =
+                static_cast<uint32_t>(now - runtime->lastSeen) / 1000UL;
+        }
+    }
+    sendJson(200, document);
+}
+
 void handlePillSave()
 {
     JsonDocument document;
@@ -1320,6 +1370,83 @@ void handleRoot()
     sendResponse(200, "text/html; charset=utf-8", body);
 }
 
+void sendLanAccessPage()
+{
+    const String hostname = webServerHostname();
+    const String hostnameUrl = String("https://") + hostname + "/";
+    const String mdnsUrl = String("https://") + hostname + ".local/";
+    const String ipUrl =
+        String("https://") + WiFi.localIP().toString() + "/";
+    String body;
+    body.reserve(3500);
+    body =
+        "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+        "<title>RaptGetaway</title><style>"
+        "body{font:16px system-ui,sans-serif;line-height:1.5;margin:2rem auto;"
+        "padding:0 1rem;max-width:38rem;color:#17212b;background:#f4f7f8}"
+        "header{display:flex;justify-content:space-between;align-items:center;"
+        "gap:1rem}select{font:inherit;padding:.45rem;border:1px solid #aab5bc;"
+        "border-radius:6px;background:white;color:#17212b}"
+        "main{background:white;padding:1.5rem;border-radius:12px;"
+        "box-shadow:0 2px 12px #0001}a{display:block;margin:.75rem 0;"
+        "padding:.8rem 1rem;background:#e8f2f6;border-radius:8px;"
+        "color:#075b78;overflow-wrap:anywhere}small{color:#4b5963}"
+        "hr{border:0;border-top:1px solid #ddd;margin:1.5rem 0}"
+        "@media(max-width:480px){body{margin:1rem auto}main{padding:1rem}}"
+        "</style><main><header><h1>RaptGetaway</h1>"
+        "<select id=\"language\" aria-label=\"Language\">"
+        "<option value=\"en\">English</option>"
+        "<option value=\"de\">Deutsch</option>"
+        "</select></header>"
+        "<p data-i18n=\"intro\">If the device name does not resolve on this "
+        "network, open it using one of these HTTPS links:</p><a href=\"";
+    body += hostnameUrl;
+    body += "\"><span data-i18n=\"hostnameLabel\">Device hostname: </span>";
+    body += hostname;
+    body += "</a><a href=\"";
+    body += mdnsUrl;
+    body += "\"><span data-i18n=\"mdnsLabel\">mDNS: </span>";
+    body += hostname;
+    body += ".local</a><a href=\"";
+    body += ipUrl;
+    body += "\"><span data-i18n=\"ipLabel\">Direct IP: </span>";
+    body += WiFi.localIP().toString();
+    body += "</a><small data-i18n=\"warning\">The certificate name does not "
+            "match the IP address. Compare its SHA-256 fingerprint with the "
+            "value in the serial output before accepting the browser warning."
+            "</small></main><script>"
+            "const translations={en:{intro:'If the device name does not "
+            "resolve on this network, open it using one of these HTTPS "
+            "links:',hostnameLabel:'Device hostname: ',mdnsLabel:'mDNS: ',"
+            "ipLabel:'Direct IP: ',warning:'The certificate name does not "
+            "match the IP address. Compare its SHA-256 fingerprint with the "
+            "value in the serial output before accepting the browser warning.',"
+            "language:'Language'},de:{intro:'Falls der Gerätename in diesem "
+            "Netzwerk nicht aufgelöst wird, öffnen Sie das Gerät über einen "
+            "dieser HTTPS-Links:',hostnameLabel:'Gerätename: ',mdnsLabel:"
+            "'mDNS: ',ipLabel:'Direkt über IP: ',warning:'Der Zertifikatsname "
+            "stimmt nicht mit der IP-Adresse überein. Vergleichen Sie den "
+            "SHA-256-Fingerabdruck mit dem Wert aus der seriellen Ausgabe, "
+            "bevor Sie die Browserwarnung bestätigen.',language:'Sprache'}};"
+            "const selector=document.getElementById('language');"
+            "const browserLanguage=(navigator.languages&&navigator.languages[0])"
+            "||navigator.language||'';"
+            "const savedLanguage=localStorage.getItem('raptgetaway-language');"
+            "let language=translations[savedLanguage]?savedLanguage:"
+            "( /^de(?:-|$)/i.test(browserLanguage)?'de':'en');"
+            "function setLanguage(value,remember){language=value;"
+            "document.documentElement.lang=value;selector.value=value;"
+            "selector.setAttribute('aria-label',translations[value].language);"
+            "document.querySelectorAll('[data-i18n]').forEach(element=>{"
+            "element.textContent=translations[value][element.dataset.i18n];});"
+            "if(remember)localStorage.setItem('raptgetaway-language',value);}"
+            "selector.addEventListener('change',event=>"
+            "setLanguage(event.target.value,true));setLanguage(language,false);"
+            "</script></html>";
+    sendResponse(200, "text/html; charset=utf-8", body);
+}
+
 esp_err_t handleSecureRequest(httpd_req_t* request)
 {
     if (webRequestMutex == nullptr ||
@@ -1444,6 +1571,7 @@ bool startHttpsServer()
         {"/api/auth/status", HTTP_GET, handleAuthStatus, false},
         {"/api/auth/setup", HTTP_POST, handleAdminPasswordSetup, false},
         {"/api/auth/login", HTTP_POST, handleAdminLogin, false},
+        {"/api/public/pills", HTTP_GET, handlePublicPillsGet, false},
         {"/api/auth/logout", HTTP_POST, handleAdminLogout, true},
         {"/api/factory-reset", HTTP_POST, handleFactoryReset, true},
         {"/api/status", HTTP_GET, handleStatus, true},
@@ -1484,6 +1612,11 @@ void startWebServer()
     server.on("/", HTTP_GET, []() {
         if (!isSetupApClient())
         {
+            if (WiFi.status() == WL_CONNECTED && httpsAvailable)
+            {
+                sendLanAccessPage();
+                return;
+            }
             dispatchApRoute(handleRoot, false);
             return;
         }
@@ -1734,6 +1867,10 @@ void setup()
     String savedPassword;
     const bool hasSavedWifi =
         readSavedWifiCredentials(savedSsid, savedPassword);
+    if (!WiFi.setHostname(webServerHostname()))
+    {
+        Serial.println("WLAN-Hostname konnte nicht gesetzt werden");
+    }
     WiFi.onEvent([](arduino_event_id_t event, arduino_event_info_t info) {
         if (event == ARDUINO_EVENT_WIFI_AP_START)
         {
@@ -1914,8 +2051,7 @@ void loop()
         static_cast<uint32_t>(now - lastMdnsAttempt) >= WIFI_RETRY_INTERVAL_MS)
     {
         lastMdnsAttempt = now;
-        String hostname = webServerHostname();
-        hostname.replace(".local", "");
+        const String hostname = webServerHostname();
         if (MDNS.begin(hostname.c_str()))
         {
             if (!MDNS.addService("https", "tcp", 443))
@@ -1923,8 +2059,9 @@ void loop()
                 Serial.println("HTTPS service could not be advertised with mDNS");
             }
             mdnsStarted = true;
-            Serial.printf("HTTPS administration: https://%s.local/\n",
-                          hostname.c_str());
+            Serial.printf("HTTPS administration: https://%s/ or "
+                          "https://%s.local/\n",
+                          hostname.c_str(), hostname.c_str());
         }
         else
         {

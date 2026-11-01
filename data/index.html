@@ -23,11 +23,33 @@
         .muted, .status { color: #b7c0cc; }
         .online { color: #73d69a; }
         .offline { color: #e8ad71; }
+        .send-ok { color: #73d69a; }
+        .send-failed { color: #f0a05a; }
+        .public-pills { list-style: none; margin: 0; padding: 0; }
+        .public-pills li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #3c424c; }
+        .public-pills li:last-child { border-bottom: 0; }
         .rssi-good { color: #73d69a; }
         .rssi-medium { color: #e8d36e; }
         .rssi-weak { color: #f0a05a; }
         .pill-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 10px; }
+        .pill { padding: 0; overflow: visible; }
+        .pill-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; cursor: pointer; list-style: none; }
+        .pill-summary::-webkit-details-marker { display: none; }
+        .pill-overview { display: grid; gap: 8px; min-width: 0; }
+        .pill-title { font-size: 1.1rem; font-weight: 600; overflow-wrap: anywhere; }
+        .pill-status-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 14px; color: #b7c0cc; }
+        .pill-brewfather { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 8px; }
+        .pill-details { padding: 0 18px 18px; }
+        .pill-details form { border-top: 1px solid #3c424c; padding-top: 8px; }
+        .pill-chevron { flex: 0 0 auto; color: #b7c0cc; transition: transform .15s ease; }
+        .pill[open] .pill-chevron { transform: rotate(180deg); }
         .ble-signal { color: #eef1f5; }
+        .pill-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+        .pill-actions button { margin: 0; }
+        .help-tip { position: relative; display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid #8994a1; border-radius: 50%; color: #cbd3dd; font-size: 13px; cursor: help; }
+        .help-tip { margin-left: auto; }
+        .help-tip::after { position: absolute; z-index: 2; right: 0; bottom: calc(100% + 8px); width: min(320px, calc(100vw - 64px)); padding: 9px 11px; border: 1px solid #58616e; border-radius: 7px; background: #171a1f; color: #eef1f5; font-size: 13px; font-weight: 400; line-height: 1.45; white-space: normal; content: attr(data-tooltip); opacity: 0; visibility: hidden; pointer-events: none; }
+        .help-tip:hover::after, .help-tip:focus::after { opacity: 1; visibility: visible; }
         .message { min-height: 1.5em; margin-top: 8px; }
         .measurements { line-height: 1.7; }
         .fingerprint { display: block; margin: 8px 0; overflow-wrap: anywhere; word-break: break-word; }
@@ -53,7 +75,7 @@
             </div>
         </div>
     </header>
-    <p id="gatewayStatus" class="status" data-i18n="loadingStatus">Loading status...</p>
+    <p id="gatewayStatus" class="status" hidden></p>
 
     <section id="setupNotice" class="muted" hidden></section>
 
@@ -63,6 +85,13 @@
         <div id="certificateInfo" class="muted"></div>
         <form id="authForm"></form>
         <div id="authMessage" class="message" role="status"></div>
+    </section>
+
+    <section id="publicPillsSection" hidden>
+        <h2 data-i18n="publicPillsHeading">Pill status</h2>
+        <ul id="publicPills" class="public-pills" aria-live="polite">
+            <li class="muted" data-i18n="publicPillsLoading">Loading Pill status...</li>
+        </ul>
     </section>
 
     <div id="adminContent" hidden>
@@ -100,7 +129,12 @@
     <script>
         const translations = {
             en: {
-                loadingStatus: "Loading status...", settings: "Settings",
+                settings: "Settings",
+                publicPillsHeading: "Pill status",
+                publicPillsLoading: "Loading Pill status...",
+                publicPillsEmpty: "No configured Pills.",
+                publicPillsNeverSeen: "not seen yet",
+                publicPillsError: "Could not load Pill status: {error}",
                 wifiHeading: "Wi-Fi setup",
                 setupNetwork: "Setup network:", address: "Address:",
                 scanWifi: "Scan for Wi-Fi networks", chooseWifi: "Choose Wi-Fi network",
@@ -125,6 +159,7 @@
                 lastSeenAgo: "last seen {duration} ago",
                 lastMeasurementAgo: "last measurement {duration} ago",
                 noMeasurementsYet: "no measurement received yet",
+                noBleSignal: "no recent BLE signal",
                 newPill: "New Pill",
                 nameInBrewfather: "Name in Brewfather",
                 streamUrl: "Brewfather Custom Stream URL",
@@ -134,17 +169,20 @@
                 interval1h: "1 hour",
                 interval2h: "2 hours",
                 interval4h: "4 hours",
-                streamUrlHelp: "A URL is saved. Enter a new URL only to replace it; leave blank to keep the saved URL.",
-                streamUrlRequired: "Enter the Brewfather URL for this Pill.",
-                noSendResult: "No send result recorded since this device started.",
-                sendAccepted: "Last send accepted by Brewfather (HTTP {status}).",
-                sendFailed: "Last send was not accepted (HTTP result {status}).",
+                streamUrlHelp: "HTTPS only. Leave blank to keep the saved URL.",
+                noSendResultShort: "no result yet",
+                notConfigured: "not configured",
+                urlMissing: "URL missing",
+                brewfatherLabel: "Brewfather:",
+                sendAcceptedShort: "accepted · HTTP {status}",
+                sendFailedShort: "not accepted · HTTP {status}",
+                sendAge: "· {duration} ago",
                 sendTime: "at {time}",
                 savePill: "Save Pill",
                 deleteConfig: "Delete configuration", saving: "Saving...",
                 pillSaved: "Pill configuration saved.",
                 pillSearchFailed: "Pill scan failed: {error}", language: "Language",
-                testSendHelp: "Uses the saved settings. Save changes first. Sends the latest measurement now and restarts this Pill's automatic upload interval; Brewfather may enforce its own rate limit.",
+                pillActionsHelp: "Save Pill: saves the name, URL, and upload interval. Test send now: sends the latest measurement using saved settings and restarts this Pill's upload interval; save changes first. Delete configuration: removes this Pill's saved configuration. Brewfather may enforce its own rate limit.",
                 testSend: "Test send now", testingSend: "Sending test measurement...",
                 testSent: "Brewfather accepted the test measurement (HTTP {status}).",
                 wifiScanStartFailed: "Could not start Wi-Fi scan",
@@ -199,7 +237,12 @@
                 factoryResetNvsFailed: "Saved settings could not be cleared."
             },
             de: {
-                loadingStatus: "Status wird geladen...", settings: "Einstellungen",
+                settings: "Einstellungen",
+                publicPillsHeading: "Pill-Status",
+                publicPillsLoading: "Pill-Status wird geladen...",
+                publicPillsEmpty: "Keine Pills konfiguriert.",
+                publicPillsNeverSeen: "noch nie gesehen",
+                publicPillsError: "Pill-Status konnte nicht geladen werden: {error}",
                 wifiHeading: "WLAN einrichten",
                 setupNetwork: "Setup-WLAN:", address: "Adresse:",
                 scanWifi: "WLANs suchen", chooseWifi: "WLAN auswählen",
@@ -224,6 +267,7 @@
                 lastSeenAgo: "zuletzt empfangen vor {duration}",
                 lastMeasurementAgo: "letzter Messwert vor {duration}",
                 noMeasurementsYet: "noch kein Messwert empfangen",
+                noBleSignal: "kein aktuelles BLE-Signal",
                 newPill: "Neue Pill",
                 nameInBrewfather: "Name in Brewfather",
                 streamUrl: "Brewfather-Custom-Stream-URL",
@@ -233,17 +277,20 @@
                 interval1h: "1 Stunde",
                 interval2h: "2 Stunden",
                 interval4h: "4 Stunden",
-                streamUrlHelp: "Eine URL ist gespeichert. Nur zum Ersetzen eine neue URL eingeben; leer lassen, um die gespeicherte URL beizubehalten.",
-                streamUrlRequired: "Brewfather-URL für diese Pill eingeben.",
-                noSendResult: "Seit dem Start dieses Geräts wurde noch kein Sendeergebnis erfasst.",
-                sendAccepted: "Letzte Sendung von Brewfather angenommen (HTTP {status}).",
-                sendFailed: "Letzte Sendung wurde nicht angenommen (HTTP-Ergebnis {status}).",
+                streamUrlHelp: "Nur HTTPS. Leer lassen, um die gespeicherte URL beizubehalten.",
+                noSendResultShort: "noch kein Ergebnis",
+                notConfigured: "nicht konfiguriert",
+                urlMissing: "URL fehlt",
+                brewfatherLabel: "Brewfather:",
+                sendAcceptedShort: "angenommen · HTTP {status}",
+                sendFailedShort: "nicht angenommen · HTTP {status}",
+                sendAge: "· vor {duration}",
                 sendTime: "um {time}",
                 savePill: "Pill speichern",
                 deleteConfig: "Konfiguration löschen", saving: "Speichere...",
                 pillSaved: "Pill-Konfiguration gespeichert.",
                 pillSearchFailed: "Pillen-Suche fehlgeschlagen: {error}", language: "Sprache",
-                testSendHelp: "Verwendet die gespeicherte Konfiguration; Änderungen bitte zuerst speichern. Sendet den letzten Messwert sofort und startet das automatische Sendeintervall dieser Pill neu. Brewfather kann ein eigenes Sendelimit durchsetzen.",
+                pillActionsHelp: "Pill speichern: speichert Name, URL und Sendeintervall. Test jetzt senden: sendet den letzten Messwert mit der gespeicherten Konfiguration und startet das Sendeintervall neu; Änderungen vorher speichern. Konfiguration löschen: entfernt die gespeicherte Konfiguration dieser Pill. Brewfather kann ein eigenes Sendelimit durchsetzen.",
                 testSend: "Test jetzt senden", testingSend: "Sende Testmesswert...",
                 testSent: "Brewfather hat den Testmesswert angenommen (HTTP {status}).",
                 wifiScanStartFailed: "WLAN-Suche konnte nicht gestartet werden",
@@ -355,6 +402,7 @@
             });
             renderAuth();
             refreshStatus().then(refreshPills);
+            refreshPublicPills();
         }
 
         document.getElementById("language").addEventListener("change", event => {
@@ -422,6 +470,8 @@
             const message = document.getElementById("authMessage");
             content.hidden = !authState.authenticated;
             panel.hidden = authState.authenticated;
+            document.getElementById("gatewayStatus").hidden =
+                !authState.authenticated;
             document.getElementById("logout").textContent = t("logout");
             document.getElementById("logout").hidden = !authState.authenticated;
             const settingsToggle = document.getElementById("settingsToggle");
@@ -436,6 +486,14 @@
                 authState.setupAccess;
             document.getElementById("pillsSection").hidden =
                 authState.setupAccess;
+            const publicPillsSection =
+                document.getElementById("publicPillsSection");
+            const showPublicPills = !authState.authenticated &&
+                authState.adminConfigured && authState.wifiConnected;
+            publicPillsSection.hidden = !showPublicPills;
+            if (!showPublicPills) {
+                document.getElementById("publicPills").innerHTML = "";
+            }
             if (authState.authenticated) return;
 
             const isSetup = !authState.adminConfigured;
@@ -542,18 +600,21 @@
                 if (authState.authenticated) {
                     await refreshStatus();
                     await refreshPills();
+                } else {
+                    await refreshPublicPills();
                 }
             } catch (error) {
                 authState = null;
                 document.getElementById("adminContent").hidden = true;
                 document.getElementById("authPanel").hidden = false;
+                document.getElementById("gatewayStatus").hidden = true;
+                document.getElementById("publicPillsSection").hidden = true;
+                document.getElementById("publicPills").innerHTML = "";
                 document.getElementById("authHeading").textContent =
                     t("authLoginHeading");
                 document.getElementById("authInstructions").textContent = "";
                 document.getElementById("authForm").innerHTML = "";
                 document.getElementById("authMessage").textContent =
-                    t("statusError", { error: localizeError(error.message) });
-                document.getElementById("gatewayStatus").textContent =
                     t("statusError", { error: localizeError(error.message) });
             }
         }
@@ -670,12 +731,51 @@
             }
         });
 
+        async function refreshPublicPills() {
+            if (!authState || authState.authenticated ||
+                document.getElementById("publicPillsSection").hidden) return;
+            const container = document.getElementById("publicPills");
+            try {
+                const pills = await request("/api/public/pills");
+                if (!pills.length) {
+                    container.innerHTML =
+                        `<li class="muted">${escapeHtml(t("publicPillsEmpty"))}</li>`;
+                    return;
+                }
+                container.innerHTML = pills.map(pill => {
+                    const status = pill.online
+                        ? t("online")
+                        : pill.lastSeenAgeSeconds !== undefined
+                            ? t("lastSeenAgo", {
+                                duration: formatDuration(
+                                    Number(pill.lastSeenAgeSeconds))
+                            })
+                            : t("publicPillsNeverSeen");
+                    return `<li><span>${escapeHtml(pill.name)}</span><span class="${pill.online ? "online" : "offline"}">${escapeHtml(status)}</span></li>`;
+                }).join("");
+            } catch (error) {
+                container.innerHTML =
+                    `<li class="message">${escapeHtml(t("publicPillsError", {
+                        error: localizeError(error.message)
+                    }))}</li>`;
+            }
+        }
+
         async function refreshPills() {
             if (!authState?.authenticated) return;
             if (document.activeElement?.closest("#pills form")) return;
             const container = document.getElementById("pills");
             try {
                 const pills = await request("/api/pills");
+                const activeElement = document.activeElement;
+                const activePillAddress =
+                    activeElement?.tagName === "SUMMARY"
+                        ? activeElement.closest(
+                            "details[data-pill-address]")?.dataset.pillAddress
+                        : undefined;
+                const openPillAddresses = new Set(
+                    [...container.querySelectorAll("details[data-pill-address][open]")]
+                        .map(details => details.dataset.pillAddress));
                 if (!pills.length) {
                     container.innerHTML = `<p class="status">${escapeHtml(t("noPills"))}</p>`;
                     return;
@@ -700,31 +800,62 @@
                             : t("noMeasurementsYet")
                         : "";
                     const sendState = !pill.configured
-                        ? ""
+                        ? t("notConfigured")
                         : !pill.urlConfigured
-                            ? t("streamUrlRequired")
+                            ? t("urlMissing")
                             : !pill.hasBrewfatherResult
-                                ? t("noSendResult")
+                                ? t("noSendResultShort")
                                 : pill.lastBrewfatherSucceeded
-                                    ? t("sendAccepted", { status: pill.lastBrewfatherStatus })
-                                    : t("sendFailed", { status: pill.lastBrewfatherStatus });
-                    const sendStateWithTime = sendState &&
-                            pill.lastBrewfatherResultEpoch
-                        ? `${sendState} ${t("sendTime", {
+                                    ? t("sendAcceptedShort", {
+                                        status: pill.lastBrewfatherStatus
+                                    })
+                                    : t("sendFailedShort", {
+                                        status: pill.lastBrewfatherStatus
+                                    });
+                    const sendStateClass = !pill.configured || !pill.urlConfigured ||
+                            !pill.hasBrewfatherResult
+                        ? "muted"
+                        : pill.lastBrewfatherSucceeded
+                            ? "send-ok"
+                            : "send-failed";
+                    const sendTime = pill.lastBrewfatherResultEpoch
+                        ? t("sendTime", {
                             time: formatTimestamp(
                                 Number(pill.lastBrewfatherResultEpoch))
-                        })}`
-                        : sendState;
-                    return `<article class="pill">
-                        <h3>${escapeHtml(pill.name || t("newPill"))}</h3>
+                        })
+                        : pill.lastBrewfatherResultAgeSeconds !== undefined
+                            ? t("sendAge", {
+                                duration: formatDuration(
+                                    Number(pill.lastBrewfatherResultAgeSeconds))
+                            })
+                            : "";
+                    const bleSignal = pill.online && pill.hasBleRssi
+                        ? `<span class="${rssiClass(Number(pill.bleRssi))}">${escapeHtml(t("bleSignal"))} ${Number(pill.bleRssi)} dBm</span>`
+                        : `<span class="muted">${escapeHtml(t("noBleSignal"))}</span>`;
+                    const detailsOpen =
+                        openPillAddresses.has(String(pill.address)) ? " open" : "";
+                    return `<details class="pill" data-pill-address="${escapeHtml(pill.address)}"${detailsOpen}>
+                        <summary class="pill-summary">
+                            <span class="pill-overview">
+                                <span class="pill-title">${escapeHtml(pill.name || t("newPill"))}</span>
+                                <span class="pill-status-row">
+                                    <span class="${pill.online ? "online" : "offline"}">${escapeHtml(seenState)}</span>
+                                    ${bleSignal}
+                                </span>
+                                <span class="pill-brewfather">
+                                    <span class="muted">${escapeHtml(t("brewfatherLabel"))}</span>
+                                    <span class="${sendStateClass}">${escapeHtml(sendState)}</span>
+                                    ${sendTime ? `<span class="muted">${escapeHtml(sendTime)}</span>` : ""}
+                                </span>
+                            </span>
+                            <span class="pill-chevron" aria-hidden="true">⌄</span>
+                        </summary>
+                        <div class="pill-details">
                         <div class="pill-meta muted">
                             <span>${escapeHtml(pill.address)}</span>
-                            <span class="${pill.online ? "online" : "offline"}">${escapeHtml(seenState)}</span>
-                            ${pill.online && pill.hasBleRssi ? `<span class="ble-signal">${escapeHtml(t("bleSignal"))} <span class="${rssiClass(Number(pill.bleRssi))}">${Number(pill.bleRssi)} dBm</span></span>` : ""}
                             ${lastMeasurement ? `<span>${escapeHtml(lastMeasurement)}</span>` : ""}
                         </div>
                         <p class="measurements">${escapeHtml(measurement)}</p>
-                        ${sendStateWithTime ? `<p class="status">${escapeHtml(sendStateWithTime)}</p>` : ""}
                         <form data-address="${escapeHtml(pill.address)}">
                             <label for="name-${index}">${escapeHtml(t("nameInBrewfather"))}</label>
                             <input id="name-${index}" name="name" maxlength="47" required value="${escapeHtml(pill.name || "")}" placeholder="Red Pill">
@@ -739,13 +870,25 @@
                                 <option value="120" ${Number(pill.intervalMinutes || 30) === 120 ? "selected" : ""}>${escapeHtml(t("interval2h"))}</option>
                                 <option value="240" ${Number(pill.intervalMinutes || 30) === 240 ? "selected" : ""}>${escapeHtml(t("interval4h"))}</option>
                             </select>
-                            <button type="submit">${escapeHtml(t("savePill"))}</button>
-                            ${pill.configured ? `<button type="button" data-test>${escapeHtml(t("testSend"))}</button><p class="muted">${escapeHtml(t("testSendHelp"))}</p>` : ""}
-                            ${pill.configured ? `<button class="danger" type="button" data-delete>${escapeHtml(t("deleteConfig"))}</button>` : ""}
+                            <div class="pill-actions">
+                                <button type="submit">${escapeHtml(t("savePill"))}</button>
+                                ${pill.configured ? `<button type="button" data-test>${escapeHtml(t("testSend"))}</button>` : ""}
+                                ${pill.configured ? `<button class="danger" type="button" data-delete>${escapeHtml(t("deleteConfig"))}</button>` : ""}
+                                <span class="help-tip" tabindex="0" role="note" aria-label="${escapeHtml(t("pillActionsHelp"))}" data-tooltip="${escapeHtml(t("pillActionsHelp"))}">i</span>
+                            </div>
                             <div class="message" role="status" data-message></div>
                         </form>
-                    </article>`;
+                        </div>
+                    </details>`;
                 }).join("");
+
+                if (activePillAddress) {
+                    [...container.querySelectorAll("details[data-pill-address]")]
+                        .find(details =>
+                            details.dataset.pillAddress === activePillAddress)
+                        ?.querySelector("summary")
+                        ?.focus();
+                }
 
                 container.querySelectorAll("form").forEach(form => form.addEventListener("submit", async event => {
                     event.preventDefault();
@@ -824,6 +967,8 @@
                         await refreshStatus();
                     }
                     nextPollRefreshesPills = !nextPollRefreshesPills;
+                } else {
+                    await refreshPublicPills();
                 }
             } finally {
                 pollInProgress = false;
